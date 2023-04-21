@@ -49,7 +49,7 @@ where
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
 
-    //returns a reicever that signals when a specific amm has changed
+    //returns a receiver that signals when a specific amm has changed
     // pub fn listen_for_state_changes<M:Middleware>(ws provider) -> Result<Receiver<Vec<H160>>, StateSpaceError<M>> {
 
     //     Ok(())
