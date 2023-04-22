@@ -7,7 +7,7 @@ use arraydeque::ArrayDeque;
 use damms::amm::{AutomatedMarketMaker, AMM};
 use ethers::{
     providers::{Middleware, PubsubClient, StreamExt},
-    types::{Filter, H160, H256},
+    types::{Filter, Log, H160, H256},
 };
 
 use crate::{
@@ -24,7 +24,7 @@ pub type StateSpace = HashMap<H160, AMM>;
 pub struct StateSpaceManager<M: Middleware, S: PubsubClient> {
     pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should NEVER while routing is occurring, account for this
     pub last_synced_block: u64,
-    pub state_change_cache: ArrayDeque<StateChange, 150>,
+    state_change_cache: ArrayDeque<StateChange, 150>,
     pub middleware: Arc<M>,
     pub stream_middleware: Arc<S>,
 }
@@ -71,12 +71,14 @@ where
         Filter::new().topic0(event_signatures)
     }
 
-    //pub fn handle_state_changes(&mut self, logs: Vec<Log>){}
-    //pub fn handle_state_change(&mut self, log: Log){}
+    pub fn handle_state_changes_from_logs(&mut self, logs: &[Log]) {}
+    pub fn handle_state_change_from_log(&mut self, log: Log) {}
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
     pub fn listen_for_new_blocks() -> Result<Receiver<H256>, StateSpaceError<M>> {
+        //TODO: have some check here to make sure we arent updating state from other functions
+
         let (tx, rx) = std::sync::mpsc::channel();
 
         tokio::spawn(async move {});
@@ -98,6 +100,8 @@ where
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
     {
+        //TODO: have some check here to make sure we arent updating state from other functions
+
         let (tx, rx) = std::sync::mpsc::channel();
 
         tokio::spawn(async move {
@@ -146,7 +150,7 @@ where
                 } else {
                     self.last_synced_block = chain_head_block_number;
 
-                    self.update_state_from_logs();
+                    self.handle_state_changes_from_logs(&logs);
                 }
             }
 
@@ -167,7 +171,7 @@ where
     //update state from logs fn
 
     //Unwinds the state changes cache for every block from the most recent state change cache back to the block to unwind -1
-    pub fn unwind_state_changes(&mut self, block_to_unwind: u64) -> Result<(), StateChangeError> {
+    fn unwind_state_changes(&mut self, block_to_unwind: u64) -> Result<(), StateChangeError> {
         loop {
             //check if the most recent state change block is >= the block to unwind,
             if let Some(state_change) = self.state_change_cache.get(0) {
@@ -197,7 +201,7 @@ where
         }
     }
 
-    pub fn add_state_change_to_cache(
+    fn add_state_change_to_cache(
         &mut self,
         state_change: StateChange,
     ) -> Result<(), StateChangeError> {
