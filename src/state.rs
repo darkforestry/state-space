@@ -6,7 +6,7 @@ use std::{
 use arraydeque::ArrayDeque;
 use damms::amm::{AutomatedMarketMaker, AMM};
 use ethers::{
-    providers::{Middleware, PubsubClient},
+    providers::{Middleware, PubsubClient, StreamExt},
     types::{Filter, H160, H256},
 };
 
@@ -92,14 +92,66 @@ where
         Ok(rx)
     }
 
-    pub fn listen_for_state_changes(&self) -> Result<Receiver<Vec<H160>>, StateSpaceError<M>>
+    pub async fn listen_for_state_changes(
+        &'static mut self,
+    ) -> Result<Receiver<Vec<H160>>, StateSpaceError<M>>
     where
-        <S as Middleware>::Provider: PubsubClient,
+        <S as Middleware>::Provider: 'static + PubsubClient,
     {
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let block_stream = self.stream_middleware.subscribe_blocks();
-        tokio::spawn(async move {});
+        tokio::spawn(async move {
+            let mut block_stream = self
+                .stream_middleware
+                .subscribe_blocks()
+                .await
+                .expect("handle this error TODO");
+
+            let filter = self.get_block_filter();
+
+            while let Some(_block) = block_stream.next().await {
+                //TODO: we could potentially remove this but have it for now because we were encountering issues with not setting the "to" block
+                let chain_head_block_number = self
+                    .middleware
+                    .get_block_number()
+                    .await
+                    .map_err(StateSpaceError::MiddlewareError)?
+                    .as_u64();
+
+                //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+                if chain_head_block_number <= self.last_synced_block {
+                    self.unwind_state_changes(chain_head_block_number)?;
+
+                    //set the last synced block to the head block number
+                    self.last_synced_block = chain_head_block_number;
+                }
+
+                let logs = self
+                    .middleware
+                    .get_logs(
+                        &filter
+                            .clone()
+                            .from_block(self.last_synced_block)
+                            .to_block(chain_head_block_number),
+                    )
+                    .await
+                    .expect("TODO: Need to handle this error");
+
+                if logs.is_empty() {
+                    for block_number in self.last_synced_block..chain_head_block_number {
+                        self.add_state_change_to_cache(StateChange::new(block_number, None));
+                    }
+
+                    self.last_synced_block = chain_head_block_number;
+                } else {
+                    self.last_synced_block = chain_head_block_number;
+
+                    self.update_state_from_logs();
+                }
+            }
+
+            Ok(())
+        });
 
         //TODO: maybe collect handles to await
 
