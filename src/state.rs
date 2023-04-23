@@ -78,12 +78,13 @@ where
         &mut self,
         logs: &[Log],
     ) -> Result<Vec<H160>, StateChangeError> {
-        let mut amms_changed = vec![];
+        let mut updated_amms_set = HashSet::new();
+        let mut updated_amms = vec![];
 
         let mut last_log_block_number = if let Some(log) = logs.get(0) {
             self.get_block_number_from_log(log)?
         } else {
-            return Ok(amms_changed);
+            return Ok(updated_amms);
         };
 
         let mut state_changes = vec![];
@@ -114,10 +115,15 @@ where
             {
                 state_changes.push(amm.clone());
                 amm.sync_from_log(&log);
+
+                if !updated_amms_set.contains(&log.address) {
+                    updated_amms_set.insert(log.address);
+                    updated_amms.push(log.address);
+                }
             }
         }
 
-        Ok(amms_changed)
+        Ok(updated_amms)
     }
 
     pub fn get_block_number_from_log(&self, log: &Log) -> Result<u64, EventLogError> {
@@ -198,14 +204,12 @@ where
 
                 if logs.is_empty() {
                     for block_number in self.last_synced_block..chain_head_block_number {
-                        self.add_state_change_to_cache(StateChange::new(block_number, None));
+                        self.add_state_change_to_cache(StateChange::new(None, block_number));
                     }
-
                     self.last_synced_block = chain_head_block_number;
                 } else {
                     self.last_synced_block = chain_head_block_number;
-
-                    self.handle_state_changes_from_logs(&logs);
+                    let amms_updated = self.handle_state_changes_from_logs(&logs);
                 }
             }
 
