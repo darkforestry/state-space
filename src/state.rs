@@ -12,6 +12,7 @@ use ethers::{
     providers::{Middleware, PubsubClient, StreamExt},
     types::{Filter, Log, H160, H256},
 };
+use tokio::task::JoinHandle;
 
 use crate::{
     error::{StateChangeError, StateSpaceError},
@@ -157,7 +158,13 @@ where
 
     pub async fn listen_for_state_changes(
         &'static mut self,
-    ) -> Result<Receiver<Vec<H160>>, StateSpaceError<M>>
+    ) -> Result<
+        (
+            Receiver<Vec<H160>>,
+            JoinHandle<Result<(), StateSpaceError<M>>>,
+        ),
+        StateSpaceError<M>,
+    >
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
     {
@@ -165,7 +172,7 @@ where
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut block_stream = self
                 .stream_middleware
                 .subscribe_blocks()
@@ -175,12 +182,11 @@ where
             let filter = self.get_block_filter();
 
             while let Some(_block) = block_stream.next().await {
-                //TODO: we could potentially remove this but have it for now because we were encountering issues with not setting the "to" block
                 let chain_head_block_number = self
                     .middleware
                     .get_block_number()
                     .await
-                    .map_err(StateSpaceError::MiddlewareError)?
+                    .map_err(StateSpaceError::<M>::MiddlewareError)?
                     .as_u64();
 
                 //If there is a reorg, unwind state changes from last_synced block to the chain head block number
@@ -213,18 +219,11 @@ where
                 }
             }
 
-            Ok(())
+            //TODO: Need to specify return type here
+            Ok::<(), StateSpaceError<M>>(())
         });
 
-        //TODO: maybe collect handles to await
-
-        //sub to new block headers
-
-        //handle the state changes
-
-        //send all of the affected amm address through the channel
-
-        Ok(rx)
+        Ok((rx, handle))
     }
 
     //update state from logs fn
