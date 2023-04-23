@@ -4,7 +4,10 @@ use std::{
 };
 
 use arraydeque::ArrayDeque;
-use damms::amm::{AutomatedMarketMaker, AMM};
+use damms::{
+    amm::{self, AutomatedMarketMaker, AMM},
+    errors::EventLogError,
+};
 use ethers::{
     providers::{Middleware, PubsubClient, StreamExt},
     types::{Filter, Log, H160, H256},
@@ -71,7 +74,59 @@ where
         Filter::new().topic0(event_signatures)
     }
 
-    pub fn handle_state_changes_from_logs(&mut self, logs: &[Log]) {}
+    pub fn handle_state_changes_from_logs(
+        &mut self,
+        logs: &[Log],
+    ) -> Result<Vec<H160>, StateChangeError> {
+        let mut amms_changed = vec![];
+
+        let mut last_log_block_number = if let Some(log) = logs.get(0) {
+            self.get_block_number_from_log(log)?
+        } else {
+            return Ok(amms_changed);
+        };
+
+        let mut state_changes = vec![];
+
+        while let Some(log) = logs[1..].iter().next() {
+            let log_block_number = self.get_block_number_from_log(log)?;
+
+            //Commit state chnages if the block has changed since last log
+            if log_block_number != last_log_block_number {
+                if state_changes.is_empty() {
+                    self.add_state_change_to_cache(StateChange::new(None, last_log_block_number));
+                } else {
+                    self.add_state_change_to_cache(StateChange::new(
+                        Some(state_changes),
+                        last_log_block_number,
+                    ));
+                };
+
+                state_changes = vec![];
+            }
+
+            // check if the log is from an amm in the state space
+            if let Some(amm) = self
+                .state
+                .write()
+                .map_err(|_| StateChangeError::PoisonedLockOnState)?
+                .get_mut(&log.address)
+            {
+                state_changes.push(amm.clone());
+                amm.sync_from_log(&log);
+            }
+        }
+
+        Ok(amms_changed)
+    }
+
+    pub fn get_block_number_from_log(&self, log: &Log) -> Result<u64, EventLogError> {
+        if let Some(block_number) = log.block_number {
+            Ok(block_number.as_u64())
+        } else {
+            return Err(damms::errors::EventLogError::LogBlockNumberNotFound);
+        }
+    }
     pub fn handle_state_change_from_log(&mut self, log: Log) {}
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced

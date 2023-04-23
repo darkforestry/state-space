@@ -46,4 +46,6 @@ pub enum StateChangeError {
     CapacityError,
     #[error("Poisoned RWLock on AMM state")]
     PoisonedLockOnState,
+    #[error("Event log error")]
+    EventLogError(#[from] EventLogError),
 }
