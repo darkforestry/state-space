@@ -1,3 +1,4 @@
+use std::sync::mpsc::SendError;
 use std::sync::{PoisonError, RwLockWriteGuard};
 
 use damms::errors::{ArithmeticError, DAMMError, EventLogError};
@@ -7,6 +8,7 @@ use ethers::providers::spoof::State;
 use ethers::providers::{Middleware, ProviderError};
 
 use ethers::signers::WalletError;
+use ethers::types::{H160, H256};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -34,6 +36,14 @@ where
     InsufficientWalletFunds(),
     #[error("Event log error")]
     EventLogError(#[from] EventLogError),
+    #[error("State change error")]
+    StateChangeError(#[from] StateChangeError),
+    #[error("Block number not found")]
+    BlockNumberNotFound,
+    #[error("Could not send state changes through channel")]
+    StateChangeSendError(#[from] SendError<Vec<H160>>),
+    #[error("Could not send block number through channel")]
+    BlockNumberSendError(#[from] SendError<H256>),
 }
 
 #[derive(Error, Debug)]

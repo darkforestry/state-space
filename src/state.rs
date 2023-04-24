@@ -96,14 +96,15 @@ where
             //Commit state chnages if the block has changed since last log
             if log_block_number != last_log_block_number {
                 if state_changes.is_empty() {
-                    self.add_state_change_to_cache(StateChange::new(None, last_log_block_number));
+                    self.add_state_change_to_cache(StateChange::new(None, last_log_block_number))?;
                 } else {
                     self.add_state_change_to_cache(StateChange::new(
                         Some(state_changes),
                         last_log_block_number,
-                    ));
+                    ))?;
                 };
 
+                last_log_block_number = log_block_number;
                 state_changes = vec![];
             }
 
@@ -115,7 +116,7 @@ where
                 .get_mut(&log.address)
             {
                 state_changes.push(amm.clone());
-                amm.sync_from_log(&log);
+                amm.sync_from_log(&log)?;
 
                 if !updated_amms_set.contains(&log.address) {
                     updated_amms_set.insert(log.address);
@@ -136,25 +137,77 @@ where
     }
     pub fn handle_state_change_from_log(&mut self, log: Log) {}
 
-    //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
-    //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
-    pub fn listen_for_new_blocks() -> Result<Receiver<H256>, StateSpaceError<M>> {
-        //TODO: have some check here to make sure we arent updating state from other functions
+    // //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
+    // //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
+    // pub fn listen_for_new_blocks(
+    //     &mut self,
+    // ) -> Result<(Receiver<H256>, JoinHandle<Result<(), StateSpaceError<M>>>), StateSpaceError<M>>
+    // where
+    //     <S as Middleware>::Provider: 'static + PubsubClient,
+    // {
+    //     //TODO: have some check here to make sure we arent updating state from other functions
 
-        let (tx, rx) = std::sync::mpsc::channel();
+    //     let (tx, rx) = std::sync::mpsc::channel();
 
-        tokio::spawn(async move {});
+    //     let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
+    //         let mut block_stream = self
+    //             .stream_middleware
+    //             .subscribe_blocks()
+    //             .await
+    //             .expect("handle this error TODO");
 
-        //TODO: maybe collect handles to await
+    //         let filter = self.get_block_filter();
 
-        //sub to new block headers
+    //         while let Some(block) = block_stream.next().await {
+    //             let chain_head_block_number = self
+    //                 .middleware
+    //                 .get_block_number()
+    //                 .await
+    //                 .map_err(StateSpaceError::<M>::MiddlewareError)?
+    //                 .as_u64();
 
-        //handle the state changes
+    //             //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+    //             if chain_head_block_number <= self.last_synced_block {
+    //                 self.unwind_state_changes(chain_head_block_number)?;
 
-        //send all of the affected amm address through the channel
+    //                 //set the last synced block to the head block number
+    //                 self.last_synced_block = chain_head_block_number;
+    //             }
 
-        Ok(rx)
-    }
+    //             let logs = self
+    //                 .middleware
+    //                 .get_logs(
+    //                     &filter
+    //                         .clone()
+    //                         .from_block(self.last_synced_block)
+    //                         .to_block(chain_head_block_number),
+    //                 )
+    //                 .await
+    //                 .expect("TODO: Need to handle this error");
+
+    //             if logs.is_empty() {
+    //                 for block_number in self.last_synced_block..chain_head_block_number {
+    //                     self.add_state_change_to_cache(StateChange::new(None, block_number));
+    //                 }
+    //                 self.last_synced_block = chain_head_block_number;
+    //             } else {
+    //                 self.last_synced_block = chain_head_block_number;
+    //                 let amms_updated = self.handle_state_changes_from_logs(&logs);
+    //             }
+
+    //             if let Some(block_hash) = block.hash {
+    //                 tx.send(block_hash);
+    //             } else {
+    //                 return Err(StateSpaceError::BlockNumberNotFound);
+    //             }
+    //         }
+
+    //         //TODO: Need to specify return type here
+    //         Ok::<(), StateSpaceError<M>>(())
+    //     });
+
+    //     Ok((rx, handle))
+    // }
 
     pub async fn listen_for_state_changes(
         &'static mut self,
@@ -172,9 +225,9 @@ where
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let handle = tokio::spawn(async move {
-            let mut block_stream = self
-                .stream_middleware
+        let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
+            let stream_middleware: Arc<S> = self.stream_middleware.clone();
+            let mut block_stream = stream_middleware
                 .subscribe_blocks()
                 .await
                 .expect("handle this error TODO");
@@ -210,12 +263,13 @@ where
 
                 if logs.is_empty() {
                     for block_number in self.last_synced_block..chain_head_block_number {
-                        self.add_state_change_to_cache(StateChange::new(None, block_number));
+                        self.add_state_change_to_cache(StateChange::new(None, block_number))?;
                     }
                     self.last_synced_block = chain_head_block_number;
                 } else {
                     self.last_synced_block = chain_head_block_number;
-                    let amms_updated = self.handle_state_changes_from_logs(&logs);
+                    let amms_updated = self.handle_state_changes_from_logs(&logs)?;
+                    tx.send(amms_updated)?;
                 }
             }
 
@@ -225,8 +279,6 @@ where
 
         Ok((rx, handle))
     }
-
-    //update state from logs fn
 
     //Unwinds the state changes cache for every block from the most recent state change cache back to the block to unwind -1
     fn unwind_state_changes(&mut self, block_to_unwind: u64) -> Result<(), StateChangeError> {
