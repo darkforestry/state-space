@@ -5,7 +5,7 @@ use std::{
 
 use arraydeque::ArrayDeque;
 use damms::{
-    amm::{self, AutomatedMarketMaker, AMM},
+    amm::{AutomatedMarketMaker, AMM},
     errors::EventLogError,
 };
 use ethers::{
@@ -54,7 +54,6 @@ where
     }
 
     pub fn get_block_filter(&self) -> Filter {
-        //Create the event log signature
         let mut event_signatures: Vec<H256> = vec![];
         let mut amm_variants = HashSet::new();
 
@@ -90,7 +89,7 @@ where
 
         let mut state_changes = vec![];
 
-        while let Some(log) = logs[1..].iter().next() {
+        while let Some(log) = logs.iter().next() {
             let log_block_number = self.get_block_number_from_log(log)?;
 
             //Commit state chnages if the block has changed since last log
