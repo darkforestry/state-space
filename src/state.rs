@@ -188,7 +188,7 @@ where
                             .to_block(chain_head_block_number),
                     )
                     .await
-                    .expect("TODO: Need to handle this error");
+                    .map_err(StateSpaceError::MiddlewareError)?;
 
                 if logs.is_empty() {
                     for block_number in self.last_synced_block..chain_head_block_number {
@@ -201,13 +201,12 @@ where
                 }
 
                 if let Some(block_hash) = block.hash {
-                    tx.send(block_hash);
+                    tx.send(block_hash)?;
                 } else {
                     return Err(StateSpaceError::BlockNumberNotFound);
                 }
             }
 
-            //TODO: Need to specify return type here
             Ok::<(), StateSpaceError<M>>(())
         });
 
@@ -267,7 +266,7 @@ where
                             .to_block(chain_head_block_number),
                     )
                     .await
-                    .expect("TODO: Need to handle this error");
+                    .map_err(StateSpaceError::MiddlewareError)?;
 
                 if logs.is_empty() {
                     for block_number in self.last_synced_block..chain_head_block_number {
