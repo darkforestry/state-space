@@ -119,7 +119,7 @@ where
                 .get_mut(&log.address)
             {
                 state_changes.push(amm.clone());
-                amm.sync_from_log(&log)?;
+                amm.sync_from_log(log)?;
 
                 if !updated_amms_set.contains(&log.address) {
                     updated_amms_set.insert(log.address);
@@ -135,13 +135,13 @@ where
         if let Some(block_number) = log.block_number {
             Ok(block_number.as_u64())
         } else {
-            return Err(damms::errors::EventLogError::LogBlockNumberNotFound);
+            Err(damms::errors::EventLogError::LogBlockNumberNotFound)
         }
     }
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
-    pub fn listen_for_new_blocks(
+    pub async fn listen_for_new_blocks(
         &'static mut self,
     ) -> Result<
         (

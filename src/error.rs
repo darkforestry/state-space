@@ -1,10 +1,9 @@
 use std::sync::mpsc::SendError;
-use std::sync::{PoisonError, RwLockWriteGuard};
 
 use damms::errors::{ArithmeticError, DAMMError, EventLogError};
 
 use ethers::prelude::{AbiError, ContractError};
-use ethers::providers::spoof::State;
+
 use ethers::providers::{Middleware, ProviderError, PubsubClient};
 
 use ethers::signers::WalletError;
