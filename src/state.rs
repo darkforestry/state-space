@@ -143,7 +143,13 @@ where
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
     pub fn listen_for_new_blocks(
         &'static mut self,
-    ) -> Result<(Receiver<H256>, JoinHandle<Result<(), StateSpaceError<M>>>), StateSpaceError<M>>
+    ) -> Result<
+        (
+            Receiver<H256>,
+            JoinHandle<Result<(), StateSpaceError<M, S>>>,
+        ),
+        StateSpaceError<M, S>,
+    >
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
     {
@@ -154,12 +160,12 @@ where
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
+        let handle: JoinHandle<Result<(), StateSpaceError<M, S>>> = tokio::spawn(async move {
             let stream_middleware: Arc<S> = self.stream_middleware.clone();
             let mut block_stream = stream_middleware
                 .subscribe_blocks()
                 .await
-                .expect("handle this error TODO");
+                .map_err(StateSpaceError::PubsubClientError)?;
 
             let filter = self.get_block_filter();
 
@@ -168,7 +174,7 @@ where
                     .middleware
                     .get_block_number()
                     .await
-                    .map_err(StateSpaceError::<M>::MiddlewareError)?
+                    .map_err(StateSpaceError::<M, S>::MiddlewareError)?
                     .as_u64();
 
                 //If there is a reorg, unwind state changes from last_synced block to the chain head block number
@@ -207,7 +213,7 @@ where
                 }
             }
 
-            Ok::<(), StateSpaceError<M>>(())
+            Ok::<(), StateSpaceError<M, S>>(())
         });
 
         Ok((rx, handle))
@@ -218,9 +224,9 @@ where
     ) -> Result<
         (
             Receiver<Vec<H160>>,
-            JoinHandle<Result<(), StateSpaceError<M>>>,
+            JoinHandle<Result<(), StateSpaceError<M, S>>>,
         ),
-        StateSpaceError<M>,
+        StateSpaceError<M, S>,
     >
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
@@ -232,12 +238,12 @@ where
 
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
+        let handle: JoinHandle<Result<(), StateSpaceError<M, S>>> = tokio::spawn(async move {
             let stream_middleware: Arc<S> = self.stream_middleware.clone();
             let mut block_stream = stream_middleware
                 .subscribe_blocks()
                 .await
-                .expect("handle this error TODO");
+                .map_err(StateSpaceError::PubsubClientError)?;
 
             let filter = self.get_block_filter();
 
@@ -246,7 +252,7 @@ where
                     .middleware
                     .get_block_number()
                     .await
-                    .map_err(StateSpaceError::<M>::MiddlewareError)?
+                    .map_err(StateSpaceError::<M, S>::MiddlewareError)?
                     .as_u64();
 
                 //If there is a reorg, unwind state changes from last_synced block to the chain head block number
@@ -280,8 +286,7 @@ where
                 }
             }
 
-            //TODO: Need to specify return type here
-            Ok::<(), StateSpaceError<M>>(())
+            Ok::<(), StateSpaceError<M, S>>(())
         });
 
         Ok((rx, handle))

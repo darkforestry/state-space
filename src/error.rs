@@ -5,19 +5,22 @@ use damms::errors::{ArithmeticError, DAMMError, EventLogError};
 
 use ethers::prelude::{AbiError, ContractError};
 use ethers::providers::spoof::State;
-use ethers::providers::{Middleware, ProviderError};
+use ethers::providers::{Middleware, ProviderError, PubsubClient};
 
 use ethers::signers::WalletError;
 use ethers::types::{H160, H256};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum StateSpaceError<M>
+pub enum StateSpaceError<M, S>
 where
     M: Middleware,
+    S: Middleware + PubsubClient,
 {
     #[error("Middleware error")]
     MiddlewareError(<M as Middleware>::Error),
+    #[error("Pubsub client error")]
+    PubsubClientError(<S as Middleware>::Error),
     #[error("Provider error")]
     ProviderError(#[from] ProviderError),
     #[error("Contract error")]
