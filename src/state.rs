@@ -52,6 +52,12 @@ where
         }
     }
 
+    pub fn initialize_state_space(amms: Vec<AMM>) -> StateSpace {
+        amms.into_iter()
+            .map(|amm| (amm.address(), amm))
+            .collect::<HashMap<H160, AMM>>()
+    }
+
     pub fn get_block_filter(&self) -> Result<Filter, StateChangeError> {
         let mut event_signatures: Vec<H256> = vec![];
         let mut amm_variants = HashSet::new();
