@@ -142,8 +142,6 @@ where
         }
     }
 
-    pub fn handle_state_change_from_log(&mut self, log: Log) {}
-
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
     pub fn listen_for_new_blocks(
