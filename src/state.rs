@@ -137,77 +137,77 @@ where
     }
     pub fn handle_state_change_from_log(&mut self, log: Log) {}
 
-    // //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
-    // //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
-    // pub fn listen_for_new_blocks(
-    //     &mut self,
-    // ) -> Result<(Receiver<H256>, JoinHandle<Result<(), StateSpaceError<M>>>), StateSpaceError<M>>
-    // where
-    //     <S as Middleware>::Provider: 'static + PubsubClient,
-    // {
-    //     //TODO: have some check here to make sure we arent updating state from other functions
+    //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
+    //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
+    pub fn listen_for_new_blocks(
+        &'static mut self,
+    ) -> Result<(Receiver<H256>, JoinHandle<Result<(), StateSpaceError<M>>>), StateSpaceError<M>>
+    where
+        <S as Middleware>::Provider: 'static + PubsubClient,
+    {
+        //TODO: have some check here to make sure we arent updating state from other functions
 
-    //     let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::channel();
 
-    //     let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
-    //         let mut block_stream = self
-    //             .stream_middleware
-    //             .subscribe_blocks()
-    //             .await
-    //             .expect("handle this error TODO");
+        let handle: JoinHandle<Result<(), StateSpaceError<M>>> = tokio::spawn(async move {
+            let stream_middleware: Arc<S> = self.stream_middleware.clone();
+            let mut block_stream = stream_middleware
+                .subscribe_blocks()
+                .await
+                .expect("handle this error TODO");
 
-    //         let filter = self.get_block_filter();
+            let filter = self.get_block_filter();
 
-    //         while let Some(block) = block_stream.next().await {
-    //             let chain_head_block_number = self
-    //                 .middleware
-    //                 .get_block_number()
-    //                 .await
-    //                 .map_err(StateSpaceError::<M>::MiddlewareError)?
-    //                 .as_u64();
+            while let Some(block) = block_stream.next().await {
+                let chain_head_block_number = self
+                    .middleware
+                    .get_block_number()
+                    .await
+                    .map_err(StateSpaceError::<M>::MiddlewareError)?
+                    .as_u64();
 
-    //             //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-    //             if chain_head_block_number <= self.last_synced_block {
-    //                 self.unwind_state_changes(chain_head_block_number)?;
+                //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+                if chain_head_block_number <= self.last_synced_block {
+                    self.unwind_state_changes(chain_head_block_number)?;
 
-    //                 //set the last synced block to the head block number
-    //                 self.last_synced_block = chain_head_block_number;
-    //             }
+                    //set the last synced block to the head block number
+                    self.last_synced_block = chain_head_block_number;
+                }
 
-    //             let logs = self
-    //                 .middleware
-    //                 .get_logs(
-    //                     &filter
-    //                         .clone()
-    //                         .from_block(self.last_synced_block)
-    //                         .to_block(chain_head_block_number),
-    //                 )
-    //                 .await
-    //                 .expect("TODO: Need to handle this error");
+                let logs = self
+                    .middleware
+                    .get_logs(
+                        &filter
+                            .clone()
+                            .from_block(self.last_synced_block)
+                            .to_block(chain_head_block_number),
+                    )
+                    .await
+                    .expect("TODO: Need to handle this error");
 
-    //             if logs.is_empty() {
-    //                 for block_number in self.last_synced_block..chain_head_block_number {
-    //                     self.add_state_change_to_cache(StateChange::new(None, block_number));
-    //                 }
-    //                 self.last_synced_block = chain_head_block_number;
-    //             } else {
-    //                 self.last_synced_block = chain_head_block_number;
-    //                 let amms_updated = self.handle_state_changes_from_logs(&logs);
-    //             }
+                if logs.is_empty() {
+                    for block_number in self.last_synced_block..chain_head_block_number {
+                        self.add_state_change_to_cache(StateChange::new(None, block_number))?;
+                    }
+                    self.last_synced_block = chain_head_block_number;
+                } else {
+                    self.last_synced_block = chain_head_block_number;
+                    self.handle_state_changes_from_logs(&logs)?;
+                }
 
-    //             if let Some(block_hash) = block.hash {
-    //                 tx.send(block_hash);
-    //             } else {
-    //                 return Err(StateSpaceError::BlockNumberNotFound);
-    //             }
-    //         }
+                if let Some(block_hash) = block.hash {
+                    tx.send(block_hash);
+                } else {
+                    return Err(StateSpaceError::BlockNumberNotFound);
+                }
+            }
 
-    //         //TODO: Need to specify return type here
-    //         Ok::<(), StateSpaceError<M>>(())
-    //     });
+            //TODO: Need to specify return type here
+            Ok::<(), StateSpaceError<M>>(())
+        });
 
-    //     Ok((rx, handle))
-    // }
+        Ok((rx, handle))
+    }
 
     pub async fn listen_for_state_changes(
         &'static mut self,
