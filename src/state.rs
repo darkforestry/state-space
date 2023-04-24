@@ -55,11 +55,16 @@ where
         }
     }
 
-    pub fn get_block_filter(&self) -> Filter {
+    pub fn get_block_filter(&self) -> Result<Filter, StateChangeError> {
         let mut event_signatures: Vec<H256> = vec![];
         let mut amm_variants = HashSet::new();
 
-        for amm in self.state.read().unwrap().values() {
+        for amm in self
+            .state
+            .read()
+            .map_err(|_| StateChangeError::PoisonedLockOnState)?
+            .values()
+        {
             let variant = match amm {
                 AMM::UniswapV2Pool(_) => 0,
                 AMM::UniswapV3Pool(_) => 1,
@@ -73,7 +78,7 @@ where
         }
 
         //Create a new filter
-        Filter::new().topic0(event_signatures)
+        Ok(Filter::new().topic0(event_signatures))
     }
 
     pub fn handle_state_changes_from_logs(
@@ -167,7 +172,7 @@ where
                 .await
                 .map_err(StateSpaceError::PubsubClientError)?;
 
-            let filter = self.get_block_filter();
+            let filter = self.get_block_filter()?;
 
             while let Some(block) = block_stream.next().await {
                 let chain_head_block_number = self
@@ -245,7 +250,7 @@ where
                 .await
                 .map_err(StateSpaceError::PubsubClientError)?;
 
-            let filter = self.get_block_filter();
+            let filter = self.get_block_filter()?;
 
             while let Some(_block) = block_stream.next().await {
                 let chain_head_block_number = self
