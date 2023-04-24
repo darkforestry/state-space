@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{mpsc::Receiver, Arc, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use arraydeque::ArrayDeque;
@@ -12,7 +12,7 @@ use ethers::{
     providers::{Middleware, PubsubClient, StreamExt},
     types::{Filter, Log, H160, H256},
 };
-use tokio::task::JoinHandle;
+use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 
 use crate::error::{StateChangeError, StateSpaceError};
 
@@ -149,6 +149,7 @@ where
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
     pub async fn listen_for_new_blocks(
         &'static mut self,
+        channel_buffer: usize,
     ) -> Result<
         (
             Receiver<H256>,
@@ -164,7 +165,7 @@ where
         }
         self.listening_for_state_changes = true;
 
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::mpsc::channel(channel_buffer);
 
         let handle: JoinHandle<Result<(), StateSpaceError<M, S>>> = tokio::spawn(async move {
             let stream_middleware: Arc<S> = self.stream_middleware.clone();
@@ -213,7 +214,7 @@ where
                 }
 
                 if let Some(block_hash) = block.hash {
-                    tx.send(block_hash)?;
+                    tx.send(block_hash).await?;
                 } else {
                     return Err(StateSpaceError::BlockNumberNotFound);
                 }
@@ -227,6 +228,7 @@ where
 
     pub async fn listen_for_state_changes(
         &'static mut self,
+        channel_buffer: usize,
     ) -> Result<
         (
             Receiver<Vec<H160>>,
@@ -242,7 +244,7 @@ where
         }
         self.listening_for_state_changes = true;
 
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = tokio::sync::mpsc::channel(channel_buffer);
 
         let handle: JoinHandle<Result<(), StateSpaceError<M, S>>> = tokio::spawn(async move {
             let stream_middleware: Arc<S> = self.stream_middleware.clone();
@@ -288,7 +290,7 @@ where
                 } else {
                     self.last_synced_block = chain_head_block_number;
                     let amms_updated = self.handle_state_changes_from_logs(&logs)?;
-                    tx.send(amms_updated)?;
+                    tx.send(amms_updated).await?;
                 }
             }
 
