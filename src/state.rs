@@ -14,10 +14,7 @@ use ethers::{
 };
 use tokio::task::JoinHandle;
 
-use crate::{
-    error::{StateChangeError, StateSpaceError},
-    state_change::StateChange,
-};
+use crate::error::{StateChangeError, StateSpaceError};
 
 //TODO:FIXME:
 //mevmanager should take tobstrat closure and txpoolstrat closure, have some sort of logic maintaining the statespace changes
@@ -341,5 +338,19 @@ where
                 .map_err(|_| StateChangeError::CapacityError)?
         }
         Ok(())
+    }
+}
+
+pub struct StateChange {
+    pub state_change: Option<Vec<AMM>>,
+    pub block_number: u64,
+}
+
+impl StateChange {
+    pub fn new(state_change: Option<Vec<AMM>>, block_number: u64) -> Self {
+        Self {
+            block_number,
+            state_change,
+        }
     }
 }
