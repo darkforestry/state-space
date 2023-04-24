@@ -29,6 +29,7 @@ pub struct StateSpaceManager<M: Middleware, S: PubsubClient> {
     pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should NEVER while routing is occurring, account for this
     pub last_synced_block: u64,
     state_change_cache: ArrayDeque<StateChange, 150>,
+    listening_for_state_changes: bool,
     pub middleware: Arc<M>,
     pub stream_middleware: Arc<S>,
 }
@@ -50,6 +51,7 @@ where
             state_change_cache: ArrayDeque::new(),
             middleware,
             stream_middleware,
+            listening_for_state_changes: false,
         }
     }
 
@@ -92,7 +94,7 @@ where
         while let Some(log) = logs.iter().next() {
             let log_block_number = self.get_block_number_from_log(log)?;
 
-            //Commit state chnages if the block has changed since last log
+            //Commit state changes if the block has changed since last log
             if log_block_number != last_log_block_number {
                 if state_changes.is_empty() {
                     self.add_state_change_to_cache(StateChange::new(None, last_log_block_number))?;
@@ -101,10 +103,10 @@ where
                         Some(state_changes),
                         last_log_block_number,
                     ))?;
+                    state_changes = vec![];
                 };
 
                 last_log_block_number = log_block_number;
-                state_changes = vec![];
             }
 
             // check if the log is from an amm in the state space
@@ -134,6 +136,7 @@ where
             return Err(damms::errors::EventLogError::LogBlockNumberNotFound);
         }
     }
+
     pub fn handle_state_change_from_log(&mut self, log: Log) {}
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
@@ -144,7 +147,10 @@ where
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
     {
-        //TODO: have some check here to make sure we arent updating state from other functions
+        if self.listening_for_state_changes {
+            return Err(StateSpaceError::AlreadyListeningForStateChanges);
+        }
+        self.listening_for_state_changes = true;
 
         let (tx, rx) = std::sync::mpsc::channel();
 
@@ -220,7 +226,10 @@ where
     where
         <S as Middleware>::Provider: 'static + PubsubClient,
     {
-        //TODO: have some check here to make sure we arent updating state from other functions
+        if self.listening_for_state_changes {
+            return Err(StateSpaceError::AlreadyListeningForStateChanges);
+        }
+        self.listening_for_state_changes = true;
 
         let (tx, rx) = std::sync::mpsc::channel();
 

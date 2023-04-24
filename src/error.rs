@@ -44,6 +44,8 @@ where
     StateChangeSendError(#[from] SendError<Vec<H160>>),
     #[error("Could not send block number through channel")]
     BlockNumberSendError(#[from] SendError<H256>),
+    #[error("Already listening for state changes")]
+    AlreadyListeningForStateChanges,
 }
 
 #[derive(Error, Debug)]
