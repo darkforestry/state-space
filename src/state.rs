@@ -52,7 +52,7 @@ where
         }
     }
 
-    pub fn initialize_state_space(amms: Vec<AMM>) -> StateSpace {
+    pub fn initialize_state(amms: Vec<AMM>) -> StateSpace {
         amms.into_iter()
             .map(|amm| (amm.address(), amm))
             .collect::<HashMap<H160, AMM>>()
