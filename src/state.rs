@@ -86,7 +86,7 @@ where
 
     pub fn handle_state_changes_from_logs(
         &mut self,
-        logs: &[Log],
+        logs: Vec<Log>,
     ) -> Result<Vec<H160>, StateChangeError> {
         let mut updated_amms_set = HashSet::new();
         let mut updated_amms = vec![];
@@ -99,8 +99,9 @@ where
 
         let mut state_changes = vec![];
 
-        while let Some(log) = logs.iter().next() {
-            let log_block_number = self.get_block_number_from_log(log)?;
+        let mut logs_iter = logs.into_iter();
+        while let Some(log) = logs_iter.next() {
+            let log_block_number = self.get_block_number_from_log(&log)?;
 
             //Commit state changes if the block has changed since last log
             if log_block_number != last_log_block_number {
@@ -124,13 +125,13 @@ where
                 .map_err(|_| StateChangeError::PoisonedLockOnState)?
                 .get_mut(&log.address)
             {
-                state_changes.push(amm.clone());
-                amm.sync_from_log(log)?;
-
                 if !updated_amms_set.contains(&log.address) {
                     updated_amms_set.insert(log.address);
                     updated_amms.push(log.address);
                 }
+
+                state_changes.push(amm.clone());
+                amm.sync_from_log(log)?;
             }
         }
 
@@ -210,7 +211,7 @@ where
                     self.last_synced_block = chain_head_block_number;
                 } else {
                     self.last_synced_block = chain_head_block_number;
-                    self.handle_state_changes_from_logs(&logs)?;
+                    self.handle_state_changes_from_logs(logs)?;
                 }
 
                 if let Some(block_hash) = block.hash {
@@ -289,7 +290,7 @@ where
                     self.last_synced_block = chain_head_block_number;
                 } else {
                     self.last_synced_block = chain_head_block_number;
-                    let amms_updated = self.handle_state_changes_from_logs(&logs)?;
+                    let amms_updated = self.handle_state_changes_from_logs(logs)?;
                     tx.send(amms_updated).await?;
                 }
             }
