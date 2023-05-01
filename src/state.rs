@@ -1,6 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc, RwLock},
+    sync::{
+        atomic::{AtomicU16, AtomicU64, Ordering},
+        Arc, Mutex, RwLock,
+    },
 };
 
 use arraydeque::ArrayDeque;
@@ -36,7 +39,7 @@ where
     S: MiddlewarePubsub,
 {
     pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should never be updating while routing is occurring where the route can be fragmented, account for this
-    pub last_synced_block: u64,
+    pub last_synced_block: AtomicU64,
     state_change_cache: ArrayDeque<StateChange, 150>,
     listening_for_state_changes: bool,
     pub middleware: Arc<M>,
@@ -48,6 +51,26 @@ where
     M: Middleware,
     S: MiddlewarePubsub,
 {
+
+    Ok here is the gameplan, I am going to take a breather and then come back to everything. Basically, we do not need state_changes_cache
+    or last synced block or listening for state changes bool defined in the struct. We only need these in the functions that update state.
+    The only reason we need them also is to roll back the state which is behind a rw lock. So basically, what we can do is initialize a state space as:
+
+    pub struct StateSpaceManager<M, S>
+    where
+        M: Middleware,
+        S: MiddlewarePubsub,
+    {
+        pub state: Arc<RwLock<StateSpace>>, 
+        pub middleware: Arc<M>,
+        pub stream_middleware: Arc<S>,
+    }
+
+
+    Then we can just call self.xyz and everything that needs to move into a thread will be cloned because it is thread safe. We can initialize a new state_space_cache and last synced block within the thread
+    The external program only needs access to the state to know what the state of the amms are at a given time. This will work, it will be thread safe and we wont need mutexes everywhere or atomic types that arent needed
+    external to the state space manager.
+
     pub fn new(
         state: StateSpace,
         last_synced_block: u64,
@@ -160,8 +183,8 @@ where
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
-    pub async fn listen_for_new_blocks(
-        &'static mut self,
+    pub async fn listen_for_new_blocks<'life0>(
+        &'life0 mut self,
         channel_buffer: usize,
     ) -> Result<
         (
@@ -180,58 +203,60 @@ where
 
         let (tx, rx) = tokio::sync::mpsc::channel(channel_buffer);
 
+        let state_space_manager = Arc::new(self);
         let handle: JoinHandle<Result<(), StateSpaceError<M, S>>> = tokio::spawn(async move {
-            let stream_middleware: Arc<S> = self.stream_middleware.clone();
-            let mut block_stream = stream_middleware
-                .subscribe_blocks()
-                .await
-                .map_err(StateSpaceError::PubsubClientError)?;
+            // let stream_middleware: Arc<S> = state_space_manager.stream_middleware.clone();
 
-            let filter = self.get_block_filter()?;
+            // let mut block_stream = stream_middleware
+            //     .subscribe_blocks()
+            //     .await
+            //     .map_err(StateSpaceError::PubsubClientError)?;
 
-            while let Some(block) = block_stream.next().await {
-                let chain_head_block_number = self
-                    .middleware
-                    .get_block_number()
-                    .await
-                    .map_err(StateSpaceError::<M, S>::MiddlewareError)?
-                    .as_u64();
+            // let filter = state_space_manager.get_block_filter()?;
 
-                //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-                if chain_head_block_number <= self.last_synced_block {
-                    self.unwind_state_changes(chain_head_block_number)?;
+            // while let Some(block) = block_stream.next().await {
+            //     let chain_head_block_number = self
+            //         .middleware
+            //         .get_block_number()
+            //         .await
+            //         .map_err(StateSpaceError::<M, S>::MiddlewareError)?
+            //         .as_u64();
 
-                    //set the last synced block to the head block number
-                    self.last_synced_block = chain_head_block_number;
-                }
+            //     //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+            //     if chain_head_block_number <= self.last_synced_block {
+            //         self.unwind_state_changes(chain_head_block_number)?;
 
-                let logs = self
-                    .middleware
-                    .get_logs(
-                        &filter
-                            .clone()
-                            .from_block(self.last_synced_block)
-                            .to_block(chain_head_block_number),
-                    )
-                    .await
-                    .map_err(StateSpaceError::MiddlewareError)?;
+            //         //set the last synced block to the head block number
+            //         self.last_synced_block = chain_head_block_number;
+            //     }
 
-                if logs.is_empty() {
-                    for block_number in self.last_synced_block..chain_head_block_number {
-                        self.add_state_change_to_cache(StateChange::new(None, block_number))?;
-                    }
-                    self.last_synced_block = chain_head_block_number;
-                } else {
-                    self.last_synced_block = chain_head_block_number;
-                    self.handle_state_changes_from_logs(logs)?;
-                }
+            //     let logs = self
+            //         .middleware
+            //         .get_logs(
+            //             &filter
+            //                 .clone()
+            //                 .from_block(self.last_synced_block)
+            //                 .to_block(chain_head_block_number),
+            //         )
+            //         .await
+            //         .map_err(StateSpaceError::MiddlewareError)?;
 
-                if let Some(block_hash) = block.hash {
-                    tx.send(block_hash).await?;
-                } else {
-                    return Err(StateSpaceError::BlockNumberNotFound);
-                }
-            }
+            //     if logs.is_empty() {
+            //         for block_number in self.last_synced_block..chain_head_block_number {
+            //             self.add_state_change_to_cache(StateChange::new(None, block_number))?;
+            //         }
+            //         self.last_synced_block = chain_head_block_number;
+            //     } else {
+            //         self.last_synced_block = chain_head_block_number;
+            //         self.handle_state_changes_from_logs(logs)?;
+            //     }
+
+            //     if let Some(block_hash) = block.hash {
+            //         tx.send(block_hash).await?;
+            //     } else {
+            //         return Err(StateSpaceError::BlockNumberNotFound);
+            //     }
+            // }
 
             Ok::<(), StateSpaceError<M, S>>(())
         });
@@ -240,7 +265,7 @@ where
     }
 
     pub async fn listen_for_state_changes(
-        &'static mut self,
+        &'static self,
         channel_buffer: usize,
     ) -> Result<
         (
@@ -252,10 +277,10 @@ where
     where
         <S as Middleware>::Provider: PubsubClient,
     {
-        if self.listening_for_state_changes {
-            return Err(StateSpaceError::AlreadyListeningForStateChanges);
-        }
-        self.listening_for_state_changes = true;
+        // if self.listening_for_state_changes {
+        //     return Err(StateSpaceError::AlreadyListeningForStateChanges);
+        // }
+        // self.listening_for_state_changes = true;
 
         let (tx, rx) = tokio::sync::mpsc::channel(channel_buffer);
 
@@ -276,12 +301,14 @@ where
                     .map_err(StateSpaceError::<M, S>::MiddlewareError)?
                     .as_u64();
 
+                let mut last_synced_block = self.last_synced_block.load(Ordering::Relaxed);
                 //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-                if chain_head_block_number <= self.last_synced_block {
+                if chain_head_block_number <= last_synced_block {
                     self.unwind_state_changes(chain_head_block_number)?;
-
                     //set the last synced block to the head block number
-                    self.last_synced_block = chain_head_block_number;
+                    last_synced_block = chain_head_block_number;
+                    self.last_synced_block
+                        .store(chain_head_block_number, Ordering::Relaxed);
                 }
 
                 let logs = self
@@ -289,19 +316,19 @@ where
                     .get_logs(
                         &filter
                             .clone()
-                            .from_block(self.last_synced_block)
+                            .from_block(last_synced_block)
                             .to_block(chain_head_block_number),
                     )
                     .await
                     .map_err(StateSpaceError::MiddlewareError)?;
 
                 if logs.is_empty() {
-                    for block_number in self.last_synced_block..chain_head_block_number {
+                    for block_number in last_synced_block..chain_head_block_number {
                         self.add_state_change_to_cache(StateChange::new(None, block_number))?;
                     }
-                    self.last_synced_block = chain_head_block_number;
+                    self.last_synced_block = AtomicU64::new(chain_head_block_number);
                 } else {
-                    self.last_synced_block = chain_head_block_number;
+                    self.last_synced_block = AtomicU64::new(chain_head_block_number);
                     let amms_updated = self.handle_state_changes_from_logs(logs)?;
                     tx.send(amms_updated).await?;
                 }
@@ -314,12 +341,13 @@ where
     }
 
     //Unwinds the state changes cache for every block from the most recent state change cache back to the block to unwind -1
-    fn unwind_state_changes(&mut self, block_to_unwind: u64) -> Result<(), StateChangeError> {
+    fn unwind_state_changes(&self, block_to_unwind: u64) -> Result<(), StateChangeError> {
+        let state_change_cache = self.state_change_cache.get_mut()?;
         loop {
             //check if the most recent state change block is >= the block to unwind,
-            if let Some(state_change) = self.state_change_cache.get(0) {
+            if let Some(state_change) = state_change_cache.get(0) {
                 if state_change.block_number >= block_to_unwind {
-                    if let Some(option_state_changes) = self.state_change_cache.pop_front() {
+                    if let Some(option_state_changes) = state_change_cache.pop_front() {
                         if let Some(state_changes) = option_state_changes.state_change {
                             for amm_state in state_changes {
                                 self.state
@@ -344,10 +372,7 @@ where
         }
     }
 
-    fn add_state_change_to_cache(
-        &mut self,
-        state_change: StateChange,
-    ) -> Result<(), StateChangeError> {
+    fn add_state_change_to_cache(&self, state_change: StateChange) -> Result<(), StateChangeError> {
         if self.state_change_cache.is_full() {
             self.state_change_cache.pop_back();
             self.state_change_cache
