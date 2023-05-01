@@ -49,12 +49,7 @@ where
     M: Middleware,
     S: MiddlewarePubsub,
 {
-    pub fn new(
-        state: StateSpace,
-        last_synced_block: u64,
-        middleware: Arc<M>,
-        stream_middleware: Arc<S>,
-    ) -> Self {
+    pub fn new(state: StateSpace, middleware: Arc<M>, stream_middleware: Arc<S>) -> Self {
         Self {
             state: Arc::new(RwLock::new(state)),
             middleware,
