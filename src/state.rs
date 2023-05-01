@@ -16,14 +16,10 @@ use tokio::{sync::mpsc::Receiver, task::JoinHandle};
 
 use crate::error::{StateChangeError, StateSpaceError};
 
-//TODO:FIXME:
-//mevmanager should take tobstrat closure and txpoolstrat closure, have some sort of logic maintaining the statespace changes
-//One potential idea is to pass in the tx for the state changes stream or some stream, and then have the state being managed elsewhere not in the mev manager, not sure yet.
-//also could be internal to the mev manager
 pub type StateSpace = HashMap<H160, AMM>;
 
-pub struct StateSpaceManager<M: Middleware, S: PubsubClient> {
-    pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should NEVER while routing is occurring, account for this
+pub struct StateSpaceManager<M: Middleware, S: Middleware + PubsubClient> {
+    pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should never be updating while routing is occurring where the route can be fragmented, account for this
     pub last_synced_block: u64,
     state_change_cache: ArrayDeque<StateChange, 150>,
     listening_for_state_changes: bool,
