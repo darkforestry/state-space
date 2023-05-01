@@ -613,8 +613,8 @@ dependencies = [
 
 [[package]]
 name = "damms"
-version = "0.4.5"
-source = "git+ssh://git@github.com/darkforestry/damms-rs.git?tag=0.4.5#986abb8c846a42e35d193c8ee38a4606fcd0ee0a"
+version = "0.4.6"
+source = "git+ssh://git@github.com/darkforestry/damms-rs.git?tag=0.4.6#b2022a2aa8b1af911b74ccf0b123bef0bf6bd983"
 dependencies = [
  "async-trait",
  "ethers",
@@ -2895,7 +2895,7 @@ dependencies = [
 
 [[package]]
 name = "state-space"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "arraydeque",
  "damms",
