@@ -1,5 +1,3 @@
-use std::sync::mpsc::SendError;
-
 use damms::errors::{ArithmeticError, DAMMError, EventLogError};
 
 use ethers::prelude::{AbiError, ContractError};

@@ -18,7 +18,23 @@ use crate::error::{StateChangeError, StateSpaceError};
 
 pub type StateSpace = HashMap<H160, AMM>;
 
-pub struct StateSpaceManager<M: Middleware, S: Middleware + PubsubClient> {
+pub trait MiddlewarePubsub: Middleware {
+    type PubsubProvider: 'static + PubsubClient;
+}
+
+impl<T> MiddlewarePubsub for T
+where
+    T: Middleware,
+    T::Provider: 'static + PubsubClient,
+{
+    type PubsubProvider = T::Provider;
+}
+
+pub struct StateSpaceManager<M, S>
+where
+    M: Middleware,
+    S: MiddlewarePubsub,
+{
     pub state: Arc<RwLock<StateSpace>>, //TODO: consider that the state should never be updating while routing is occurring where the route can be fragmented, account for this
     pub last_synced_block: u64,
     state_change_cache: ArrayDeque<StateChange, 150>,
@@ -31,6 +47,7 @@ impl<M, S> StateSpaceManager<M, S>
 where
     M: Middleware,
     S: Middleware + PubsubClient,
+    <S as Middleware>::Provider: 'static + PubsubClient,
 {
     pub fn new(
         state: StateSpace,
