@@ -8,11 +8,13 @@ use ethers::signers::WalletError;
 use ethers::types::{H160, H256};
 use thiserror::Error;
 
+use crate::state::MiddlewarePubsub;
+
 #[derive(Error, Debug)]
 pub enum StateSpaceError<M, S>
 where
     M: Middleware,
-    S: Middleware + PubsubClient,
+    S: MiddlewarePubsub,
 {
     #[error("Middleware error")]
     MiddlewareError(<M as Middleware>::Error),

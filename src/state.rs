@@ -46,8 +46,7 @@ where
 impl<M, S> StateSpaceManager<M, S>
 where
     M: Middleware,
-    S: Middleware + PubsubClient,
-    <S as Middleware>::Provider: 'static + PubsubClient,
+    S: MiddlewarePubsub,
 {
     pub fn new(
         state: StateSpace,
@@ -172,7 +171,7 @@ where
         StateSpaceError<M, S>,
     >
     where
-        <S as Middleware>::Provider: 'static + PubsubClient,
+        <S as Middleware>::Provider: PubsubClient,
     {
         if self.listening_for_state_changes {
             return Err(StateSpaceError::AlreadyListeningForStateChanges);
@@ -251,7 +250,7 @@ where
         StateSpaceError<M, S>,
     >
     where
-        <S as Middleware>::Provider: 'static + PubsubClient,
+        <S as Middleware>::Provider: PubsubClient,
     {
         if self.listening_for_state_changes {
             return Err(StateSpaceError::AlreadyListeningForStateChanges);
