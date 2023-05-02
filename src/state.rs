@@ -57,6 +57,23 @@ where
         }
     }
 
+    pub fn initialize_new_state_space(
+        amms: Vec<AMM>,
+        middleware: Arc<M>,
+        stream_middleware: Arc<S>,
+    ) -> Self {
+        let state = amms
+            .into_iter()
+            .map(|amm| (amm.address(), amm))
+            .collect::<HashMap<H160, AMM>>();
+
+        Self {
+            state: Arc::new(RwLock::new(state)),
+            middleware,
+            stream_middleware,
+        }
+    }
+
     pub fn initialize_state(amms: Vec<AMM>) -> StateSpace {
         amms.into_iter()
             .map(|amm| (amm.address(), amm))
