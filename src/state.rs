@@ -261,10 +261,12 @@ where
                             &filter
                                 .clone()
                                 .from_block(last_synced_block)
-                                .to_block(chain_head_block_number),
+                                .to_block(chain_head_block_number), //TODO: this is double syncing since we sync from last to current, then last to current again. ex. 99 100, then 100 101.
                         )
                         .await
                         .map_err(StateSpaceError::MiddlewareError)?;
+
+                    //TODO: fix this, needs sanity check with the last synced block and chain head block number changing, need to patch this bug
 
                     if logs.is_empty() {
                         for block_number in last_synced_block..=chain_head_block_number {
@@ -524,6 +526,19 @@ mod tests {
     #[test]
     fn test_add_empty_state_changes() {
         let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+
+        //When listening to new blocks, we get all logs from the last synced block to the current chain head block. If there are no logs, we go through last synced block
+        // if logs.is_empty() {
+        //     for block_number in last_synced_block..=chain_head_block_number {
+        //         add_state_change_to_cache(
+        //             &mut state_change_cache,
+        //             StateChange::new(None, block_number),
+        //         )?;
+        //     }
+        //     last_synced_block = chain_head_block_number;
+        // } else {
+        //   //--snip--
+        // }
 
         let last_synced_block = 0;
         let chain_head_block_number = 100;
