@@ -5,7 +5,7 @@ use ethers::prelude::{AbiError, ContractError};
 use ethers::providers::{Middleware, ProviderError};
 
 use ethers::signers::WalletError;
-use ethers::types::{H160, H256};
+use ethers::types::{Block, H160, H256};
 use thiserror::Error;
 
 use crate::state::MiddlewarePubsub;
@@ -45,7 +45,7 @@ where
     #[error("Could not send state changes through channel")]
     StateChangeSendError(#[from] tokio::sync::mpsc::error::SendError<Vec<H160>>),
     #[error("Could not send block hash through channel")]
-    BlockHashSendError(#[from] tokio::sync::mpsc::error::SendError<H256>),
+    BlockHashSendError(#[from] tokio::sync::mpsc::error::SendError<Block<H256>>),
     #[error("Already listening for state changes")]
     AlreadyListeningForStateChanges,
 }

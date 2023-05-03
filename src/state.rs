@@ -10,7 +10,7 @@ use damms::{
 };
 use ethers::{
     providers::{Middleware, PubsubClient, StreamExt},
-    types::{Filter, Log, H160, H256},
+    types::{Block, Filter, Log, H160, H256},
 };
 use tokio::{
     sync::mpsc::{Receiver, Sender},
@@ -97,7 +97,7 @@ where
         channel_buffer: usize,
     ) -> Result<
         (
-            Receiver<H256>,
+            Receiver<Block<H256>>,
             Vec<JoinHandle<Result<(), StateSpaceError<M, S>>>>,
         ),
         StateSpaceError<M, S>,
@@ -111,7 +111,7 @@ where
         let stream_middleware: Arc<S> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
 
-        let (stream_tx, mut stream_rx): (Sender<H256>, Receiver<H256>) =
+        let (stream_tx, mut stream_rx): (Sender<Block<H256>>, Receiver<Block<H256>>) =
             tokio::sync::mpsc::channel(channel_buffer);
 
         let stream_handle = tokio::spawn(async move {
@@ -121,11 +121,7 @@ where
                 .map_err(StateSpaceError::PubsubClientError)?;
 
             while let Some(block) = block_stream.next().await {
-                if let Some(block_hash) = block.hash {
-                    stream_tx.send(block_hash).await?;
-                } else {
-                    return Err(StateSpaceError::BlockNumberNotFound);
-                }
+                stream_tx.send(block).await?;
             }
 
             Ok::<(), StateSpaceError<M, S>>(())
@@ -135,55 +131,58 @@ where
 
         let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
-                while let Some(block_hash) = stream_rx.recv().await {
-                    let chain_head_block_number = middleware
-                        .get_block_number()
-                        .await
-                        .map_err(StateSpaceError::<M, S>::MiddlewareError)?
-                        .as_u64();
+                while let Some(block) = stream_rx.recv().await {
+                    if let Some(chain_head_block_number) = block.number {
+                        let chain_head_block_number = chain_head_block_number.as_u64();
 
-                    //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+                        //If there is a reorg, unwind state changes from last_synced block to the chain head block number
 
-                    if chain_head_block_number <= last_synced_block {
-                        unwind_state_changes(
-                            state.clone(),
-                            &mut state_change_cache,
-                            chain_head_block_number,
-                        )?;
-
-                        //set the last synced block to the head block number
-                        last_synced_block = chain_head_block_number;
-                    }
-
-                    let logs = middleware
-                        .get_logs(
-                            &filter
-                                .clone()
-                                .from_block(last_synced_block)
-                                .to_block(chain_head_block_number),
-                        )
-                        .await
-                        .map_err(StateSpaceError::MiddlewareError)?;
-
-                    if logs.is_empty() {
-                        for block_number in last_synced_block..=chain_head_block_number {
-                            add_state_change_to_cache(
+                        if chain_head_block_number <= last_synced_block {
+                            unwind_state_changes(
+                                state.clone(),
                                 &mut state_change_cache,
-                                StateChange::new(None, block_number),
+                                chain_head_block_number,
+                            )?;
+
+                            //set the last synced block to the head block number
+                            last_synced_block = chain_head_block_number - 1;
+                        }
+
+                        let from_block: u64 = last_synced_block + 1;
+
+                        let logs = middleware
+                            .get_logs(
+                                &filter
+                                    .clone()
+                                    .from_block(from_block)
+                                    .to_block(chain_head_block_number),
+                            )
+                            .await
+                            .map_err(StateSpaceError::MiddlewareError)?;
+
+                        if logs.is_empty() {
+                            last_synced_block = chain_head_block_number;
+
+                            for block_number in from_block..=chain_head_block_number {
+                                add_state_change_to_cache(
+                                    &mut state_change_cache,
+                                    StateChange::new(None, block_number),
+                                )?;
+                            }
+                        } else {
+                            last_synced_block = chain_head_block_number;
+
+                            handle_state_changes_from_logs(
+                                state.clone(),
+                                &mut state_change_cache,
+                                logs,
                             )?;
                         }
-                        last_synced_block = chain_head_block_number;
+
+                        new_block_tx.send(block).await?;
                     } else {
-                        last_synced_block = chain_head_block_number;
-
-                        handle_state_changes_from_logs(
-                            state.clone(),
-                            &mut state_change_cache,
-                            logs,
-                        )?;
+                        return Err(StateSpaceError::BlockNumberNotFound);
                     }
-
-                    new_block_tx.send(block_hash).await?;
                 }
 
                 Ok::<(), StateSpaceError<M, S>>(())
@@ -212,7 +211,7 @@ where
         let stream_middleware: Arc<S> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
 
-        let (stream_tx, mut stream_rx): (Sender<H256>, Receiver<H256>) =
+        let (stream_tx, mut stream_rx): (Sender<Block<H256>>, Receiver<Block<H256>>) =
             tokio::sync::mpsc::channel(channel_buffer);
 
         let stream_handle = tokio::spawn(async move {
@@ -222,11 +221,7 @@ where
                 .map_err(StateSpaceError::PubsubClientError)?;
 
             while let Some(block) = block_stream.next().await {
-                if let Some(block_hash) = block.hash {
-                    stream_tx.send(block_hash).await?;
-                } else {
-                    return Err(StateSpaceError::BlockNumberNotFound);
-                }
+                stream_tx.send(block).await?;
             }
 
             Ok::<(), StateSpaceError<M, S>>(())
@@ -236,55 +231,56 @@ where
 
         let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
-                while let Some(_block_hash) = stream_rx.recv().await {
-                    let chain_head_block_number = middleware
-                        .get_block_number()
-                        .await
-                        .map_err(StateSpaceError::<M, S>::MiddlewareError)?
-                        .as_u64();
+                while let Some(block) = stream_rx.recv().await {
+                    if let Some(chain_head_block_number) = block.number {
+                        let chain_head_block_number = chain_head_block_number.as_u64();
 
-                    //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-
-                    if chain_head_block_number <= last_synced_block {
-                        unwind_state_changes(
-                            state.clone(),
-                            &mut state_change_cache,
-                            chain_head_block_number,
-                        )?;
-
-                        //set the last synced block to the head block number
-                        last_synced_block = chain_head_block_number;
-                    }
-
-                    let logs = middleware
-                        .get_logs(
-                            &filter
-                                .clone()
-                                .from_block(last_synced_block)
-                                .to_block(chain_head_block_number), //TODO: this is double syncing since we sync from last to current, then last to current again. ex. 99 100, then 100 101.
-                        )
-                        .await
-                        .map_err(StateSpaceError::MiddlewareError)?;
-
-                    //TODO: fix this, needs sanity check with the last synced block and chain head block number changing, need to patch this bug
-
-                    if logs.is_empty() {
-                        for block_number in last_synced_block..=chain_head_block_number {
-                            add_state_change_to_cache(
+                        //If there is a reorg, unwind state changes from last_synced block to the chain head block number
+                        if chain_head_block_number <= last_synced_block {
+                            unwind_state_changes(
+                                state.clone(),
                                 &mut state_change_cache,
-                                StateChange::new(None, block_number),
+                                chain_head_block_number,
                             )?;
-                        }
-                        last_synced_block = chain_head_block_number;
-                    } else {
-                        last_synced_block = chain_head_block_number;
-                        let amms_updated = handle_state_changes_from_logs(
-                            state.clone(),
-                            &mut state_change_cache,
-                            logs,
-                        )?;
 
-                        new_block_tx.send(amms_updated).await?;
+                            //set the last synced block to the head block number
+                            last_synced_block = chain_head_block_number - 1;
+                        }
+
+                        let from_block: u64 = last_synced_block + 1;
+
+                        let logs = middleware
+                            .get_logs(
+                                &filter
+                                    .clone()
+                                    .from_block(from_block)
+                                    .to_block(chain_head_block_number), //TODO: this is double syncing since we sync from last to current, then last to current again. ex. 99 100, then 100 101.
+                            )
+                            .await
+                            .map_err(StateSpaceError::MiddlewareError)?;
+
+                        //TODO: fix this, needs sanity check with the last synced block and chain head block number changing, need to patch this bug
+                        if logs.is_empty() {
+                            last_synced_block = chain_head_block_number;
+
+                            for block_number in from_block..=chain_head_block_number {
+                                add_state_change_to_cache(
+                                    &mut state_change_cache,
+                                    StateChange::new(None, block_number),
+                                )?;
+                            }
+                        } else {
+                            last_synced_block = chain_head_block_number;
+                            let amms_updated = handle_state_changes_from_logs(
+                                state.clone(),
+                                &mut state_change_cache,
+                                logs,
+                            )?;
+
+                            new_block_tx.send(amms_updated).await?;
+                        }
+                    } else {
+                        return Err(StateSpaceError::BlockNumberNotFound);
                     }
                 }
 
