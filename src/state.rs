@@ -1,9 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        atomic::{AtomicU16, AtomicU64, Ordering},
-        Arc, Mutex, RwLock,
-    },
+    sync::{Arc, RwLock},
 };
 
 use arraydeque::ArrayDeque;
@@ -395,8 +392,7 @@ pub fn handle_state_changes_from_logs(
 
     let mut state_changes = vec![];
 
-    let mut logs_iter = logs.into_iter();
-    while let Some(log) = logs_iter.next() {
+    for log in logs.into_iter() {
         let log_block_number = get_block_number_from_log(&log)?;
 
         //Commit state changes if the block has changed since last log

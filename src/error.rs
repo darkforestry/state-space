@@ -2,7 +2,7 @@ use damms::errors::{ArithmeticError, DAMMError, EventLogError};
 
 use ethers::prelude::{AbiError, ContractError};
 
-use ethers::providers::{Middleware, ProviderError, PubsubClient};
+use ethers::providers::{Middleware, ProviderError};
 
 use ethers::signers::WalletError;
 use ethers::types::{H160, H256};
