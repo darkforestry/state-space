@@ -34,6 +34,7 @@ where
     type PubsubProvider = T::Provider;
 }
 
+#[derive(Debug)]
 pub struct StateSpaceManager<M, S>
 where
     M: 'static + Middleware,
@@ -266,7 +267,7 @@ where
                         .map_err(StateSpaceError::MiddlewareError)?;
 
                     if logs.is_empty() {
-                        for block_number in last_synced_block..chain_head_block_number {
+                        for block_number in last_synced_block..=chain_head_block_number {
                             add_state_change_to_cache(
                                 &mut state_change_cache,
                                 StateChange::new(None, block_number),
@@ -298,6 +299,7 @@ pub fn initialize_state_space(amms: Vec<AMM>) -> StateSpace {
         .collect::<HashMap<H160, AMM>>()
 }
 
+#[derive(Debug)]
 pub struct StateChange {
     pub state_change: Option<Vec<AMM>>,
     pub block_number: u64,
@@ -444,10 +446,11 @@ mod tests {
         add_state_change_to_cache, unwind_state_changes, StateChange, StateChangeCache,
     };
 
-    #[tokio::test]
-    async fn test_add_state_changes() {
+    #[test]
+    fn test_add_state_changes() {
         let mut state_change_cache: StateChangeCache = ArrayDeque::new();
 
+        //TODO: update to emulate state changes from block range
         for i in 0..=100 {
             let new_amm = AMM::UniswapV2Pool(UniswapV2Pool {
                 address: H160::zero(),
@@ -516,5 +519,23 @@ mod tests {
 
         unwind_state_changes(state_space_manager.state, &mut state_change_cache, 50)
             .expect("could not unwind state changes");
+    }
+
+    #[test]
+    fn test_add_empty_state_changes() {
+        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+
+        let last_synced_block = 0;
+        let chain_head_block_number = 100;
+
+        for block_number in last_synced_block..=chain_head_block_number {
+            add_state_change_to_cache(
+                &mut state_change_cache,
+                StateChange::new(None, block_number),
+            )
+            .expect("could not add state change");
+        }
+
+        assert_eq!(state_change_cache.len(), 101)
     }
 }
