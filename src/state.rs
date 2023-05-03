@@ -430,16 +430,55 @@ pub fn get_block_number_from_log(log: &Log) -> Result<u64, EventLogError> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{default, sync::Arc};
 
-    use ethers::providers::{Http, Provider, Ws};
+    use arraydeque::ArrayDeque;
+    use damms::amm::{uniswap_v2::UniswapV2Pool, AMM};
+    use ethers::{
+        providers::{Http, Provider, Ws},
+        types::H160,
+    };
 
     use super::StateSpaceManager;
+    use crate::state::{
+        add_state_change_to_cache, unwind_state_changes, StateChange, StateChangeCache,
+    };
+
+    #[tokio::test]
+    async fn test_add_state_changes() {
+        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+
+        for i in 0..=100 {
+            let new_amm = AMM::UniswapV2Pool(UniswapV2Pool {
+                address: H160::zero(),
+                reserve_0: i,
+                ..default::Default::default()
+            });
+
+            add_state_change_to_cache(
+                &mut state_change_cache,
+                StateChange::new(Some(vec![new_amm]), i as u64),
+            )
+            .expect("could not add state change");
+        }
+
+        if let Some(last_state_change) = state_change_cache.pop_front() {
+            if let Some(state_changes) = last_state_change.state_change {
+                assert_eq!(state_changes.len(), 1);
+
+                if let AMM::UniswapV2Pool(pool) = &state_changes[0] {
+                    assert_eq!(pool.reserve_0, 100);
+                } else {
+                    panic!("Unexpected AMM variant")
+                }
+            } else {
+                panic!("state changes not found")
+            }
+        }
+    }
 
     #[tokio::test]
     async fn test_unwind_state_changes() {
-        let amms = vec![];
-
         // let rpc_endpoint =
         //     std::env::var("ETHEREUM_RPC_ENDPOINT").expect("Could not get ETHEREUM_RPC_ENDPOINT");
         // let ws_endpoint =
@@ -453,6 +492,29 @@ mod tests {
                 .expect("could not initialize ws provider"),
         );
 
+        let amms = vec![AMM::UniswapV2Pool(UniswapV2Pool {
+            address: H160::zero(),
+            ..default::Default::default()
+        })];
+
         let state_space_manager = StateSpaceManager::new(amms, middleware, stream_middleware);
+        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+
+        for i in 0..100 {
+            let new_amm = AMM::UniswapV2Pool(UniswapV2Pool {
+                address: H160::zero(),
+                reserve_0: i,
+                ..default::Default::default()
+            });
+
+            add_state_change_to_cache(
+                &mut state_change_cache,
+                StateChange::new(Some(vec![new_amm]), i as u64),
+            )
+            .expect("could not add state change");
+        }
+
+        unwind_state_changes(state_space_manager.state, &mut state_change_cache, 50)
+            .expect("could not unwind state changes");
     }
 }
