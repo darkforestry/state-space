@@ -248,7 +248,6 @@ where
                         }
 
                         let from_block: u64 = last_synced_block + 1;
-
                         let logs = middleware
                             .get_logs(
                                 &filter
@@ -398,23 +397,35 @@ pub fn handle_state_changes_from_logs(
             };
 
             last_log_block_number = log_block_number;
-        }
+        } else {
+            // check if the log is from an amm in the state space
+            if let Some(amm) = state
+                .write()
+                .map_err(|_| StateChangeError::PoisonedLockOnState)?
+                .get_mut(&log.address)
+            {
+                if !updated_amms_set.contains(&log.address) {
+                    updated_amms_set.insert(log.address);
+                    updated_amms.push(log.address);
+                }
 
-        // check if the log is from an amm in the state space
-        if let Some(amm) = state
-            .write()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)?
-            .get_mut(&log.address)
-        {
-            if !updated_amms_set.contains(&log.address) {
-                updated_amms_set.insert(log.address);
-                updated_amms.push(log.address);
+                state_changes.push(amm.clone());
+                amm.sync_from_log(log)?;
             }
-
-            state_changes.push(amm.clone());
-            amm.sync_from_log(log)?;
         }
     }
+
+    if state_changes.is_empty() {
+        add_state_change_to_cache(
+            state_change_cache,
+            StateChange::new(None, last_log_block_number),
+        )?;
+    } else {
+        add_state_change_to_cache(
+            state_change_cache,
+            StateChange::new(Some(state_changes), last_log_block_number),
+        )?;
+    };
 
     Ok(updated_amms)
 }
