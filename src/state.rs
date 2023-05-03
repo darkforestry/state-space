@@ -467,6 +467,7 @@ mod tests {
             .expect("could not add state change");
         }
 
+        //TODO: deconstruct this cleaner
         if let Some(last_state_change) = state_change_cache.pop_front() {
             if let Some(state_changes) = last_state_change.state_change {
                 assert_eq!(state_changes.len(), 1);
@@ -521,6 +522,8 @@ mod tests {
 
         unwind_state_changes(state_space_manager.state, &mut state_change_cache, 50)
             .expect("could not unwind state changes");
+
+        //TODO: assert state changes
     }
 
     #[test]
