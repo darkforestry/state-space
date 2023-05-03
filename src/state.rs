@@ -262,7 +262,6 @@ where
                         //TODO: fix this, needs sanity check with the last synced block and chain head block number changing, need to patch this bug
                         if logs.is_empty() {
                             last_synced_block = chain_head_block_number;
-
                             for block_number in from_block..=chain_head_block_number {
                                 add_state_change_to_cache(
                                     &mut state_change_cache,
