@@ -369,14 +369,13 @@ pub fn handle_state_changes_from_logs(
 ) -> Result<Vec<H160>, StateChangeError> {
     let mut updated_amms_set = HashSet::new();
     let mut updated_amms = vec![];
+    let mut state_changes = vec![];
 
     let mut last_log_block_number = if let Some(log) = logs.get(0) {
         get_block_number_from_log(log)?
     } else {
         return Ok(updated_amms);
     };
-
-    let mut state_changes = vec![];
 
     for log in logs.into_iter() {
         let log_block_number = get_block_number_from_log(&log)?;
@@ -397,21 +396,21 @@ pub fn handle_state_changes_from_logs(
             };
 
             last_log_block_number = log_block_number;
-        } else {
-            // check if the log is from an amm in the state space
-            if let Some(amm) = state
-                .write()
-                .map_err(|_| StateChangeError::PoisonedLockOnState)?
-                .get_mut(&log.address)
-            {
-                if !updated_amms_set.contains(&log.address) {
-                    updated_amms_set.insert(log.address);
-                    updated_amms.push(log.address);
-                }
+        }
 
-                state_changes.push(amm.clone());
-                amm.sync_from_log(log)?;
+        // check if the log is from an amm in the state space
+        if let Some(amm) = state
+            .write()
+            .map_err(|_| StateChangeError::PoisonedLockOnState)?
+            .get_mut(&log.address)
+        {
+            if !updated_amms_set.contains(&log.address) {
+                updated_amms_set.insert(log.address);
+                updated_amms.push(log.address);
             }
+
+            state_changes.push(amm.clone());
+            amm.sync_from_log(log)?;
         }
     }
 
