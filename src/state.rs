@@ -49,19 +49,7 @@ where
     M: Middleware,
     S: MiddlewarePubsub,
 {
-    pub fn new(state: StateSpace, middleware: Arc<M>, stream_middleware: Arc<S>) -> Self {
-        Self {
-            state: Arc::new(RwLock::new(state)),
-            middleware,
-            stream_middleware,
-        }
-    }
-
-    pub fn initialize_new_state_space(
-        amms: Vec<AMM>,
-        middleware: Arc<M>,
-        stream_middleware: Arc<S>,
-    ) -> Self {
+    pub fn new(amms: Vec<AMM>, middleware: Arc<M>, stream_middleware: Arc<S>) -> Self {
         let state = amms
             .into_iter()
             .map(|amm| (amm.address(), amm))
@@ -72,12 +60,6 @@ where
             middleware,
             stream_middleware,
         }
-    }
-
-    pub fn initialize_state(amms: Vec<AMM>) -> StateSpace {
-        amms.into_iter()
-            .map(|amm| (amm.address(), amm))
-            .collect::<HashMap<H160, AMM>>()
     }
 
     pub fn get_block_filter(&self) -> Result<Filter, StateChangeError> {
@@ -310,6 +292,12 @@ where
     }
 }
 
+pub fn initialize_state_space(amms: Vec<AMM>) -> StateSpace {
+    amms.into_iter()
+        .map(|amm| (amm.address(), amm))
+        .collect::<HashMap<H160, AMM>>()
+}
+
 pub struct StateChange {
     pub state_change: Option<Vec<AMM>>,
     pub block_number: u64,
@@ -437,5 +425,34 @@ pub fn get_block_number_from_log(log: &Log) -> Result<u64, EventLogError> {
         Ok(block_number.as_u64())
     } else {
         Err(damms::errors::EventLogError::LogBlockNumberNotFound)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ethers::providers::{Http, Provider, Ws};
+
+    use super::StateSpaceManager;
+
+    #[tokio::test]
+    async fn test_unwind_state_changes() {
+        let amms = vec![];
+
+        // let rpc_endpoint =
+        //     std::env::var("ETHEREUM_RPC_ENDPOINT").expect("Could not get ETHEREUM_RPC_ENDPOINT");
+        // let ws_endpoint =
+        //     std::env::var("ETHEREUM_WS_ENDPOINT").expect("Could not get ETHEREUM_RPC_ENDPOINT");
+
+        let middleware = Arc::new(Provider::<Http>::try_from("").unwrap());
+
+        let stream_middleware = Arc::new(
+            Provider::<Ws>::connect("")
+                .await
+                .expect("could not initialize ws provider"),
+        );
+
+        let state_space_manager = StateSpaceManager::new(amms, middleware, stream_middleware);
     }
 }
