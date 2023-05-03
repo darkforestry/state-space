@@ -183,7 +183,7 @@ where
                         .map_err(StateSpaceError::MiddlewareError)?;
 
                     if logs.is_empty() {
-                        for block_number in last_synced_block..chain_head_block_number {
+                        for block_number in last_synced_block..=chain_head_block_number {
                             add_state_change_to_cache(
                                 &mut state_change_cache,
                                 StateChange::new(None, block_number),
