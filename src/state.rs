@@ -223,9 +223,9 @@ where
             Ok::<(), StateSpaceError<M, S>>(())
         });
 
-        let (new_block_tx, new_block_rx) = tokio::sync::mpsc::channel(channel_buffer);
+        let (amms_updated_tx, amms_updated_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
-        let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
+        let updated_amms_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
                     if let Some(chain_head_block_number) = block.number {
@@ -268,7 +268,7 @@ where
                                 logs,
                             )?;
 
-                            new_block_tx.send(amms_updated).await?;
+                            amms_updated_tx.send(amms_updated).await?;
                         }
 
                         last_synced_block = chain_head_block_number;
@@ -280,7 +280,7 @@ where
                 Ok::<(), StateSpaceError<M, S>>(())
             });
 
-        Ok((new_block_rx, vec![stream_handle, new_block_handle]))
+        Ok((amms_updated_rx, vec![stream_handle, updated_amms_handle]))
     }
 }
 
