@@ -249,7 +249,7 @@ where
                                 &filter
                                     .clone()
                                     .from_block(from_block)
-                                    .to_block(chain_head_block_number), //TODO: this is double syncing since we sync from last to current, then last to current again. ex. 99 100, then 100 101.
+                                    .to_block(chain_head_block_number),
                             )
                             .await
                             .map_err(StateSpaceError::MiddlewareError)?;
