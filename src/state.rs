@@ -51,7 +51,7 @@ where
     S: MiddlewarePubsub,
 {
     pub fn new(amms: Vec<AMM>, middleware: Arc<M>, stream_middleware: Arc<S>) -> Self {
-        let state = amms
+        let state: HashMap<H160, AMM> = amms
             .into_iter()
             .map(|amm| (amm.address(), amm))
             .collect::<HashMap<H160, AMM>>();
@@ -91,7 +91,7 @@ where
 
     //listens to new blocks and handles state changes, sending an h256 block hash when a new block is produced
     //pub fn listen_for_new_blocks()-> Result<Receiver<H256>, StateSpaceError<M>> {}
-    pub async fn listen_for_new_blocks<'life0>(
+    pub async fn listen_for_new_blocks(
         &self,
         mut last_synced_block: u64,
         channel_buffer: usize,
@@ -136,7 +136,6 @@ where
                         let chain_head_block_number = chain_head_block_number.as_u64();
 
                         //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-
                         if chain_head_block_number <= last_synced_block {
                             unwind_state_changes(
                                 state.clone(),
@@ -144,12 +143,11 @@ where
                                 chain_head_block_number,
                             )?;
 
-                            //set the last synced block to the head block number
+                            //TODO: update this comment to explain why we set it to -1
                             last_synced_block = chain_head_block_number - 1;
                         }
 
                         let from_block: u64 = last_synced_block + 1;
-
                         let logs = middleware
                             .get_logs(
                                 &filter
@@ -161,8 +159,6 @@ where
                             .map_err(StateSpaceError::MiddlewareError)?;
 
                         if logs.is_empty() {
-                            last_synced_block = chain_head_block_number;
-
                             for block_number in from_block..=chain_head_block_number {
                                 add_state_change_to_cache(
                                     &mut state_change_cache,
@@ -170,14 +166,14 @@ where
                                 )?;
                             }
                         } else {
-                            last_synced_block = chain_head_block_number;
-
                             handle_state_changes_from_logs(
                                 state.clone(),
                                 &mut state_change_cache,
                                 logs,
                             )?;
                         }
+
+                        last_synced_block = chain_head_block_number;
 
                         new_block_tx.send(block).await?;
                     } else {
@@ -258,9 +254,7 @@ where
                             .await
                             .map_err(StateSpaceError::MiddlewareError)?;
 
-                        //TODO: fix this, needs sanity check with the last synced block and chain head block number changing, need to patch this bug
                         if logs.is_empty() {
-                            last_synced_block = chain_head_block_number;
                             for block_number in from_block..=chain_head_block_number {
                                 add_state_change_to_cache(
                                     &mut state_change_cache,
@@ -268,7 +262,6 @@ where
                                 )?;
                             }
                         } else {
-                            last_synced_block = chain_head_block_number;
                             let amms_updated = handle_state_changes_from_logs(
                                 state.clone(),
                                 &mut state_change_cache,
@@ -277,6 +270,8 @@ where
 
                             new_block_tx.send(amms_updated).await?;
                         }
+
+                        last_synced_block = chain_head_block_number;
                     } else {
                         return Err(StateSpaceError::BlockNumberNotFound);
                     }
@@ -316,6 +311,7 @@ fn unwind_state_changes(
     state_change_cache: &mut StateChangeCache,
     block_to_unwind: u64,
 ) -> Result<(), StateChangeError> {
+    //TODO: update this to use a range and not a loop
     loop {
         //check if the most recent state change block is >= the block to unwind,
         if let Some(state_change) = state_change_cache.get(0) {
@@ -380,6 +376,21 @@ pub fn handle_state_changes_from_logs(
     for log in logs.into_iter() {
         let log_block_number = get_block_number_from_log(&log)?;
 
+        // check if the log is from an amm in the state space
+        if let Some(amm) = state
+            .write()
+            .map_err(|_| StateChangeError::PoisonedLockOnState)?
+            .get_mut(&log.address)
+        {
+            if !updated_amms_set.contains(&log.address) {
+                updated_amms_set.insert(log.address);
+                updated_amms.push(log.address);
+            }
+
+            state_changes.push(amm.clone());
+            amm.sync_from_log(log)?;
+        }
+
         //Commit state changes if the block has changed since last log
         if log_block_number != last_log_block_number {
             if state_changes.is_empty() {
@@ -396,21 +407,6 @@ pub fn handle_state_changes_from_logs(
             };
 
             last_log_block_number = log_block_number;
-        }
-
-        // check if the log is from an amm in the state space
-        if let Some(amm) = state
-            .write()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)?
-            .get_mut(&log.address)
-        {
-            if !updated_amms_set.contains(&log.address) {
-                updated_amms_set.insert(log.address);
-                updated_amms.push(log.address);
-            }
-
-            state_changes.push(amm.clone());
-            amm.sync_from_log(log)?;
         }
     }
 
