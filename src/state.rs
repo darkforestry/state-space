@@ -136,7 +136,6 @@ where
                         let chain_head_block_number = chain_head_block_number.as_u64();
 
                         //If there is a reorg, unwind state changes from last_synced block to the chain head block number
-
                         if chain_head_block_number <= last_synced_block {
                             unwind_state_changes(
                                 state.clone(),
@@ -227,9 +226,9 @@ where
             Ok::<(), StateSpaceError<M, S>>(())
         });
 
-        let (new_block_tx, new_block_rx) = tokio::sync::mpsc::channel(channel_buffer);
+        let (amms_updated_tx, amms_updated_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
-        let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
+        let updated_amms_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
                     if let Some(chain_head_block_number) = block.number {
@@ -275,7 +274,7 @@ where
                                 logs,
                             )?;
 
-                            new_block_tx.send(amms_updated).await?;
+                            amms_updated_tx.send(amms_updated).await?;
                         }
                     } else {
                         return Err(StateSpaceError::BlockNumberNotFound);
@@ -285,7 +284,7 @@ where
                 Ok::<(), StateSpaceError<M, S>>(())
             });
 
-        Ok((new_block_rx, vec![stream_handle, new_block_handle]))
+        Ok((amms_updated_rx, vec![stream_handle, updated_amms_handle]))
     }
 }
 
