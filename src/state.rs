@@ -108,7 +108,7 @@ where
         <S as Middleware>::Provider: PubsubClient,
     {
         let state = self.state.clone();
-        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+        let _state_change_cache: StateChangeCache = ArrayDeque::new();
         let middleware = self.middleware.clone();
         let stream_middleware: Arc<S> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
@@ -205,7 +205,7 @@ where
         <S as Middleware>::Provider: PubsubClient,
     {
         let state = self.state.clone();
-        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+        let _state_change_cache: StateChangeCache = ArrayDeque::new();
         let middleware = self.middleware.clone();
         let stream_middleware: Arc<S> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
@@ -453,7 +453,7 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
-    use arraydeque::ArrayDeque;
+    
     use damms::amm::{uniswap_v2::UniswapV2Pool, AMM};
     use ethers::{
         providers::{Http, Provider, Ws},
