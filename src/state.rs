@@ -41,6 +41,7 @@ where
     S: 'static + MiddlewarePubsub,
 {
     pub state: Arc<RwLock<StateSpace>>,
+    pub state_change_cache: Arc<RwLock<StateChangeCache>>,
     pub middleware: Arc<M>,
     pub stream_middleware: Arc<S>,
 }
@@ -58,6 +59,7 @@ where
 
         Self {
             state: Arc::new(RwLock::new(state)),
+            state_change_cache: Arc::new(RwLock::new(ArrayDeque::new())),
             middleware,
             stream_middleware,
         }
@@ -129,6 +131,7 @@ where
 
         let (new_block_tx, new_block_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
+        let state_change_cache = self.state_change_cache.clone();
         let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
@@ -139,7 +142,7 @@ where
                         if chain_head_block_number <= last_synced_block {
                             unwind_state_changes(
                                 state.clone(),
-                                &mut state_change_cache,
+                                state_change_cache.clone(),
                                 chain_head_block_number,
                             )?;
 
@@ -161,14 +164,14 @@ where
                         if logs.is_empty() {
                             for block_number in from_block..=chain_head_block_number {
                                 add_state_change_to_cache(
-                                    &mut state_change_cache,
+                                    state_change_cache.clone(),
                                     StateChange::new(None, block_number),
                                 )?;
                             }
                         } else {
                             handle_state_changes_from_logs(
                                 state.clone(),
-                                &mut state_change_cache,
+                                state_change_cache.clone(),
                                 logs,
                             )?;
                         }
@@ -225,6 +228,8 @@ where
 
         let (amms_updated_tx, amms_updated_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
+        let state_change_cache = self.state_change_cache.clone();
+
         let updated_amms_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
@@ -235,7 +240,7 @@ where
                         if chain_head_block_number <= last_synced_block {
                             unwind_state_changes(
                                 state.clone(),
-                                &mut state_change_cache,
+                                state_change_cache.clone(),
                                 chain_head_block_number,
                             )?;
 
@@ -257,14 +262,14 @@ where
                         if logs.is_empty() {
                             for block_number in from_block..=chain_head_block_number {
                                 add_state_change_to_cache(
-                                    &mut state_change_cache,
+                                    state_change_cache.clone(),
                                     StateChange::new(None, block_number),
                                 )?;
                             }
                         } else {
                             let amms_updated = handle_state_changes_from_logs(
                                 state.clone(),
-                                &mut state_change_cache,
+                                state_change_cache.clone(),
                                 logs,
                             )?;
 
@@ -308,9 +313,13 @@ impl StateChange {
 //Unwinds the state changes cache for every block from the most recent state change cache back to the block to unwind -1
 fn unwind_state_changes(
     state: Arc<RwLock<StateSpace>>,
-    state_change_cache: &mut StateChangeCache,
+    state_change_cache: Arc<RwLock<StateChangeCache>>,
     block_to_unwind: u64,
 ) -> Result<(), StateChangeError> {
+    let mut state_change_cache = state_change_cache
+        .write()
+        .map_err(|_| StateChangeError::PoisonedLockOnState)?;
+
     //TODO: update this to use a range and not a loop
     loop {
         //check if the most recent state change block is >= the block to unwind,
@@ -342,9 +351,13 @@ fn unwind_state_changes(
 }
 
 fn add_state_change_to_cache(
-    state_change_cache: &mut StateChangeCache,
+    state_change_cache: Arc<RwLock<StateChangeCache>>,
     state_change: StateChange,
 ) -> Result<(), StateChangeError> {
+    let mut state_change_cache = state_change_cache
+        .write()
+        .map_err(|_| StateChangeError::PoisonedLockOnState)?;
+
     if state_change_cache.is_full() {
         state_change_cache.pop_back();
         state_change_cache
@@ -360,7 +373,7 @@ fn add_state_change_to_cache(
 
 pub fn handle_state_changes_from_logs(
     state: Arc<RwLock<StateSpace>>,
-    state_change_cache: &mut StateChangeCache,
+    state_change_cache: Arc<RwLock<StateChangeCache>>,
     logs: Vec<Log>,
 ) -> Result<Vec<H160>, StateChangeError> {
     let mut updated_amms_set = HashSet::new();
@@ -395,12 +408,12 @@ pub fn handle_state_changes_from_logs(
         if log_block_number != last_log_block_number {
             if state_changes.is_empty() {
                 add_state_change_to_cache(
-                    state_change_cache,
+                    state_change_cache.clone(),
                     StateChange::new(None, last_log_block_number),
                 )?;
             } else {
                 add_state_change_to_cache(
-                    state_change_cache,
+                    state_change_cache.clone(),
                     StateChange::new(Some(state_changes), last_log_block_number),
                 )?;
                 state_changes = vec![];
@@ -435,7 +448,10 @@ pub fn get_block_number_from_log(log: &Log) -> Result<u64, EventLogError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{default, sync::Arc};
+    use std::{
+        default,
+        sync::{Arc, RwLock},
+    };
 
     use arraydeque::ArrayDeque;
     use damms::amm::{uniswap_v2::UniswapV2Pool, AMM};
@@ -451,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_add_state_changes() {
-        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+        let state_change_cache = Arc::new(RwLock::new(StateChangeCache::new()));
 
         //TODO: update to emulate state changes from block range
         for i in 0..=100 {
@@ -462,11 +478,15 @@ mod tests {
             });
 
             add_state_change_to_cache(
-                &mut state_change_cache,
+                state_change_cache.clone(),
                 StateChange::new(Some(vec![new_amm]), i as u64),
             )
             .expect("could not add state change");
         }
+
+        let mut state_change_cache = state_change_cache
+            .write()
+            .expect("could not acquire lock on state change cache");
 
         //TODO: deconstruct this cleaner
         if let Some(last_state_change) = state_change_cache.pop_front() {
@@ -505,7 +525,7 @@ mod tests {
         })];
 
         let state_space_manager = StateSpaceManager::new(amms, middleware, stream_middleware);
-        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
+        let state_change_cache = Arc::new(RwLock::new(StateChangeCache::new()));
 
         for i in 0..100 {
             let new_amm = AMM::UniswapV2Pool(UniswapV2Pool {
@@ -515,13 +535,13 @@ mod tests {
             });
 
             add_state_change_to_cache(
-                &mut state_change_cache,
+                state_change_cache.clone(),
                 StateChange::new(Some(vec![new_amm]), i as u64),
             )
             .expect("could not add state change");
         }
 
-        unwind_state_changes(state_space_manager.state, &mut state_change_cache, 50)
+        unwind_state_changes(state_space_manager.state, state_change_cache, 50)
             .expect("could not unwind state changes");
 
         //TODO: assert state changes
@@ -529,32 +549,23 @@ mod tests {
 
     #[test]
     fn test_add_empty_state_changes() {
-        let mut state_change_cache: StateChangeCache = ArrayDeque::new();
-
-        //When listening to new blocks, we get all logs from the last synced block to the current chain head block. If there are no logs, we go through last synced block
-        // if logs.is_empty() {
-        //     for block_number in last_synced_block..=chain_head_block_number {
-        //         add_state_change_to_cache(
-        //             &mut state_change_cache,
-        //             StateChange::new(None, block_number),
-        //         )?;
-        //     }
-        //     last_synced_block = chain_head_block_number;
-        // } else {
-        //   //--snip--
-        // }
-
         let last_synced_block = 0;
         let chain_head_block_number = 100;
 
+        let state_change_cache = Arc::new(RwLock::new(StateChangeCache::new()));
+
         for block_number in last_synced_block..=chain_head_block_number {
             add_state_change_to_cache(
-                &mut state_change_cache,
+                state_change_cache.clone(),
                 StateChange::new(None, block_number),
             )
             .expect("could not add state change");
         }
 
-        assert_eq!(state_change_cache.len(), 101)
+        let state_change_cache_length = state_change_cache
+            .read()
+            .expect("could not read from rwlock")
+            .len();
+        assert_eq!(state_change_cache_length, 101)
     }
 }
