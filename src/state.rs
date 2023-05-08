@@ -453,7 +453,6 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
-    
     use damms::amm::{uniswap_v2::UniswapV2Pool, AMM};
     use ethers::{
         providers::{Http, Provider, Ws},
