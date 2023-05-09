@@ -35,23 +35,23 @@ where
 }
 
 #[derive(Debug)]
-pub struct StateSpaceManager<M, S>
+pub struct StateSpaceManager<M, P>
 where
     M: 'static + Middleware,
-    S: 'static + MiddlewarePubsub,
+    P: 'static + MiddlewarePubsub,
 {
     pub state: Arc<RwLock<StateSpace>>,
     pub state_change_cache: Arc<RwLock<StateChangeCache>>,
     pub middleware: Arc<M>,
-    pub stream_middleware: Arc<S>,
+    pub stream_middleware: Arc<P>,
 }
 
-impl<M, S> StateSpaceManager<M, S>
+impl<M, P> StateSpaceManager<M, P>
 where
     M: Middleware,
-    S: MiddlewarePubsub,
+    P: MiddlewarePubsub,
 {
-    pub fn new(amms: Vec<AMM>, middleware: Arc<M>, stream_middleware: Arc<S>) -> Self {
+    pub fn new(amms: Vec<AMM>, middleware: Arc<M>, stream_middleware: Arc<P>) -> Self {
         let state: HashMap<H160, AMM> = amms
             .into_iter()
             .map(|amm| (amm.address(), amm))
@@ -100,17 +100,17 @@ where
     ) -> Result<
         (
             Receiver<Block<H256>>,
-            Vec<JoinHandle<Result<(), StateSpaceError<M, S>>>>,
+            Vec<JoinHandle<Result<(), StateSpaceError<M, P>>>>,
         ),
-        StateSpaceError<M, S>,
+        StateSpaceError<M, P>,
     >
     where
-        <S as Middleware>::Provider: PubsubClient,
+        <P as Middleware>::Provider: PubsubClient,
     {
         let state = self.state.clone();
         let _state_change_cache: StateChangeCache = ArrayDeque::new();
         let middleware = self.middleware.clone();
-        let stream_middleware: Arc<S> = self.stream_middleware.clone();
+        let stream_middleware: Arc<P> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
 
         let (stream_tx, mut stream_rx): (Sender<Block<H256>>, Receiver<Block<H256>>) =
@@ -126,13 +126,13 @@ where
                 stream_tx.send(block).await?;
             }
 
-            Ok::<(), StateSpaceError<M, S>>(())
+            Ok::<(), StateSpaceError<M, P>>(())
         });
 
         let (new_block_tx, new_block_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
         let state_change_cache = self.state_change_cache.clone();
-        let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
+        let new_block_handle: JoinHandle<Result<(), StateSpaceError<M, P>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
                     if let Some(chain_head_block_number) = block.number {
@@ -184,7 +184,7 @@ where
                     }
                 }
 
-                Ok::<(), StateSpaceError<M, S>>(())
+                Ok::<(), StateSpaceError<M, P>>(())
             });
 
         Ok((new_block_rx, vec![stream_handle, new_block_handle]))
@@ -197,17 +197,17 @@ where
     ) -> Result<
         (
             Receiver<Vec<H160>>,
-            Vec<JoinHandle<Result<(), StateSpaceError<M, S>>>>,
+            Vec<JoinHandle<Result<(), StateSpaceError<M, P>>>>,
         ),
-        StateSpaceError<M, S>,
+        StateSpaceError<M, P>,
     >
     where
-        <S as Middleware>::Provider: PubsubClient,
+        <P as Middleware>::Provider: PubsubClient,
     {
         let state = self.state.clone();
         let _state_change_cache: StateChangeCache = ArrayDeque::new();
         let middleware = self.middleware.clone();
-        let stream_middleware: Arc<S> = self.stream_middleware.clone();
+        let stream_middleware: Arc<P> = self.stream_middleware.clone();
         let filter = self.get_block_filter()?;
 
         let (stream_tx, mut stream_rx): (Sender<Block<H256>>, Receiver<Block<H256>>) =
@@ -223,14 +223,14 @@ where
                 stream_tx.send(block).await?;
             }
 
-            Ok::<(), StateSpaceError<M, S>>(())
+            Ok::<(), StateSpaceError<M, P>>(())
         });
 
         let (amms_updated_tx, amms_updated_rx) = tokio::sync::mpsc::channel(channel_buffer);
 
         let state_change_cache = self.state_change_cache.clone();
 
-        let updated_amms_handle: JoinHandle<Result<(), StateSpaceError<M, S>>> =
+        let updated_amms_handle: JoinHandle<Result<(), StateSpaceError<M, P>>> =
             tokio::spawn(async move {
                 while let Some(block) = stream_rx.recv().await {
                     if let Some(chain_head_block_number) = block.number {
@@ -282,7 +282,7 @@ where
                     }
                 }
 
-                Ok::<(), StateSpaceError<M, S>>(())
+                Ok::<(), StateSpaceError<M, P>>(())
             });
 
         Ok((amms_updated_rx, vec![stream_handle, updated_amms_handle]))
