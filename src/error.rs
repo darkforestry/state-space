@@ -11,15 +11,15 @@ use thiserror::Error;
 use crate::state::MiddlewarePubsub;
 
 #[derive(Error, Debug)]
-pub enum StateSpaceError<M, S>
+pub enum StateSpaceError<M, P>
 where
     M: Middleware,
-    S: MiddlewarePubsub,
+    P: MiddlewarePubsub,
 {
     #[error("Middleware error")]
     MiddlewareError(<M as Middleware>::Error),
     #[error("Pubsub client error")]
-    PubsubClientError(<S as Middleware>::Error),
+    PubsubClientError(<P as Middleware>::Error),
     #[error("Provider error")]
     ProviderError(#[from] ProviderError),
     #[error("Contract error")]
