@@ -45,7 +45,7 @@ where
     #[error("Could not send state changes through channel")]
     StateChangeSendError(#[from] tokio::sync::mpsc::error::SendError<Vec<H160>>),
     #[error("Could not send block hash through channel")]
-    BlockHashSendError(#[from] tokio::sync::mpsc::error::SendError<Block<H256>>),
+    BlockSendError(#[from] tokio::sync::mpsc::error::SendError<Block<H256>>),
     #[error("Already listening for state changes")]
     AlreadyListeningForStateChanges,
 }
