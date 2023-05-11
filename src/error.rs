@@ -44,7 +44,7 @@ where
     BlockNumberNotFound,
     #[error("Could not send state changes through channel")]
     StateChangeSendError(#[from] tokio::sync::mpsc::error::SendError<Vec<H160>>),
-    #[error("Could not send block hash through channel")]
+    #[error("Could not send block through channel")]
     BlockSendError(#[from] tokio::sync::mpsc::error::SendError<Block<H256>>),
     #[error("Already listening for state changes")]
     AlreadyListeningForStateChanges,
