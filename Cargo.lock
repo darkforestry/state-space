@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "state-space"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "arraydeque",
  "damms",
