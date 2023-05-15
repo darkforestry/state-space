@@ -324,7 +324,7 @@ async fn unwind_state_changes(
 ) -> Result<(), StateChangeError> {
     let mut state_change_cache = state_change_cache
         .write()
-        .map_err(|_| StateChangeError::PoisonedLockOnState)?;
+        .map_err(|_| StateChangeError::PoisonedLockOnStateChangeCache)?;
 
     //TODO: update this to use a range and not a loop
     loop {
@@ -362,7 +362,7 @@ async fn add_state_change_to_cache(
 ) -> Result<(), StateChangeError> {
     let mut state_change_cache = state_change_cache
         .write()
-        .map_err(|_| StateChangeError::PoisonedLockOnState)?;
+        .map_err(|_| StateChangeError::PoisonedLockOnStateChangeCache)?;
 
     if state_change_cache.is_full() {
         state_change_cache.pop_back();
