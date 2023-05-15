@@ -38,6 +38,8 @@ where
     InsufficientWalletFunds(),
     #[error("Event log error")]
     EventLogError(#[from] EventLogError),
+    #[error("State error")]
+    StateError(#[from] StateError),
     #[error("State change error")]
     StateChangeError(#[from] StateChangeError),
     #[error("Block number not found")]
@@ -51,6 +53,12 @@ where
 }
 
 #[derive(Error, Debug)]
+pub enum StateError {
+    #[error("Poisoned RWLock on AMM state")]
+    PoisonedLockOnState,
+}
+
+#[derive(Error, Debug)]
 pub enum StateChangeError {
     #[error("No state changes in cache")]
     NoStateChangesInCache,
@@ -58,10 +66,10 @@ pub enum StateChangeError {
     PopFrontError,
     #[error("State change cache capacity error")]
     CapacityError,
-    #[error("Poisoned RWLock on AMM state")]
-    PoisonedLockOnState,
     #[error("Poisoned RWLock on state change cache")]
     PoisonedLockOnStateChangeCache,
     #[error("Event log error")]
     EventLogError(#[from] EventLogError),
+    #[error("State error")]
+    StateError(#[from] StateError),
 }

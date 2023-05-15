@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::error::{StateChangeError, StateSpaceError};
+use crate::error::{StateChangeError, StateError, StateSpaceError};
 
 pub type StateSpace = HashMap<H160, AMM>;
 pub type StateChangeCache = ArrayDeque<StateChange, 150>;
@@ -65,14 +65,14 @@ where
         }
     }
 
-    pub async fn get_block_filter(&self) -> Result<Filter, StateChangeError> {
+    pub async fn get_block_filter(&self) -> Result<Filter, StateError> {
         let mut event_signatures: Vec<H256> = vec![];
         let mut amm_variants = HashSet::new();
 
         for amm in self
             .state
             .read()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)?
+            .map_err(|_| StateError::PoisonedLockOnState)?
             .values()
         {
             let variant = match amm {
@@ -336,7 +336,7 @@ async fn unwind_state_changes(
                         for amm_state in state_changes {
                             state
                                 .write()
-                                .map_err(|_| StateChangeError::PoisonedLockOnState)?
+                                .map_err(|_| StateError::PoisonedLockOnState)?
                                 .insert(amm_state.address(), amm_state);
                         }
                     }
@@ -398,7 +398,7 @@ pub async fn handle_state_changes_from_logs(
         // check if the log is from an amm in the state space
         if let Some(amm) = state
             .write()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)?
+            .map_err(|_| StateError::PoisonedLockOnState)?
             .get_mut(&log.address)
         {
             if !updated_amms_set.contains(&log.address) {
@@ -471,7 +471,7 @@ mod tests {
 
     use super::StateSpaceManager;
     use crate::{
-        error::StateChangeError,
+        error::{StateChangeError, StateError},
         state::{add_state_change_to_cache, unwind_state_changes, StateChange, StateChangeCache},
     };
 
@@ -497,7 +497,7 @@ mod tests {
 
         let mut state_change_cache = state_change_cache
             .write()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)
+            .map_err(|_| StateError::PoisonedLockOnState)
             .expect("Poisoned lock on state");
 
         //TODO: deconstruct this cleaner
@@ -579,7 +579,7 @@ mod tests {
 
         let state_change_cache_length = state_change_cache
             .read()
-            .map_err(|_| StateChangeError::PoisonedLockOnState)
+            .map_err(|_| StateError::PoisonedLockOnState)
             .expect("Poisoned lock on state change cache")
             .len();
         assert_eq!(state_change_cache_length, 101)
