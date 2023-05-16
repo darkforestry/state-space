@@ -9,7 +9,8 @@ use damms::{
     errors::EventLogError,
 };
 use ethers::{
-    providers::{Middleware, PubsubClient, StreamExt},
+    prelude::gas_oracle::middleware,
+    providers::{spoof::State, Middleware, PubsubClient, StreamExt},
     types::{Block, Filter, Log, H160, H256},
 };
 use tokio::{
@@ -174,6 +175,7 @@ where
                                 state.clone(),
                                 state_change_cache.clone(),
                                 logs,
+                                middleware.clone(),
                             )
                             .await?;
                         }
@@ -275,6 +277,7 @@ where
                                 state.clone(),
                                 state_change_cache.clone(),
                                 logs,
+                                middleware.clone(),
                             )
                             .await?;
 
@@ -369,10 +372,11 @@ async fn add_state_change_to_cache(
     Ok(())
 }
 
-pub async fn handle_state_changes_from_logs(
+pub async fn handle_state_changes_from_logs<M: Middleware>(
     state: Arc<RwLock<StateSpace>>,
     state_change_cache: Arc<RwLock<StateChangeCache>>,
     logs: Vec<Log>,
+    middleware: Arc<M>,
 ) -> Result<Vec<H160>, StateChangeError> {
     let mut updated_amms_set = HashSet::new();
     let mut updated_amms = vec![];
@@ -395,7 +399,18 @@ pub async fn handle_state_changes_from_logs(
             }
 
             state_changes.push(amm.clone());
-            amm.sync_from_log(log)?;
+            //TODO: uncomment this when all sync from log functions are not async
+            // amm.sync_from_log(log)?;
+
+            match amm {
+                AMM::UniswapV2Pool(pool) => pool.sync_from_log(log)?,
+                AMM::UniswapV3Pool(pool) => pool.sync_from_log(log)?,
+                AMM::ERC4626Vault(vault) => vault.sync_from_log(log)?,
+                AMM::IziSwapPool(pool) => pool
+                    .sync_from_swap_log(log, middleware.clone())
+                    .await
+                    .map_err(|_| StateChangeError::MiddlewareError)?,
+            }
         }
 
         //Commit state changes if the block has changed since last log

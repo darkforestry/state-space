@@ -60,4 +60,7 @@ pub enum StateChangeError {
     CapacityError,
     #[error("Event log error")]
     EventLogError(#[from] EventLogError),
+
+    #[error("TODO: remove this once Iziswap is local")]
+    MiddlewareError,
 }
