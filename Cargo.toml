@@ -1,6 +1,6 @@
 [package]
 name = "state-space"
-version = "0.1.25"
+version = "0.1.26"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,6 +13,6 @@ tokio = { version = "1.21.1", features = ["full"] }
 thiserror = "1.0.36"
 
 # dark forestry
-damms = { git = "ssh://git@github.com/darkforestry/damms-rs.git", tag = "0.5.0" }
+damms = { git = "ssh://git@github.com/darkforestry/damms-rs.git", tag = "0.5.1" }
 arraydeque = "0.5.1"
 regex = "1.7.2"
